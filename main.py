@@ -9,7 +9,7 @@ from langchain.chains import create_sql_query_chain
 
 # 1. Load Environment Variables
 load_dotenv()
-api_key = os.getenv("API_KEY")
+api_key = os.getenv("api_key")
 
 # 2. Setup the App
 app = FastAPI()
