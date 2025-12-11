@@ -30,6 +30,18 @@ app.add_middleware(
 # Global variable to store the current database connection
 DB_PATH = "dynamic.db"
 
+# Root endpoint
+@app.get("/")
+async def root():
+    return {
+        "message": "Chat with Database API is running!",
+        "endpoints": {
+            "upload": "POST /upload - Upload a CSV file",
+            "ask": "POST /ask - Ask questions about your data",
+            "docs": "GET /docs - API documentation"
+        }
+    }
+
 # 3. HELPER: Function to get the current DB
 def get_db_chain():
     if not os.path.exists(DB_PATH):
@@ -71,6 +83,40 @@ async def upload_file(file: UploadFile = File(...)):
 class QueryRequest(BaseModel):
     question: str
 
+# Helper: Calculate query relevance/confidence
+def calculate_confidence(question: str, available_columns: list, result: str) -> dict:
+    """
+    Calculate confidence score based on:
+    1. Whether the question relates to available columns
+    2. Whether the result contains meaningful data
+    3. Result length and format
+    """
+    question_lower = question.lower()
+    confidence = 0.5  # Base confidence
+    
+    # Check if question mentions any column names
+    column_matches = sum(1 for col in available_columns if col.lower() in question_lower)
+    if column_matches > 0:
+        confidence += 0.2 * min(column_matches, 2)  # Up to 0.4 boost
+    
+    # Check result quality
+    if result and result.strip() and result != "[]":
+        confidence += 0.2
+        # Check if result looks like actual data (contains parentheses, brackets, numbers)
+        if any(c in result for c in ['(', '[', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9']):
+            confidence += 0.1
+    else:
+        confidence -= 0.3  # Penalty for empty results
+    
+    # Cap confidence between 0 and 1
+    confidence = max(0.0, min(1.0, confidence))
+    
+    return {
+        "score": round(confidence, 2),
+        "is_reliable": confidence >= 0.5,
+        "column_relevance": column_matches > 0
+    }
+
 # 6. API: Chat with the uploaded DB
 @app.post("/ask")
 async def ask_database(request: QueryRequest):
@@ -110,18 +156,35 @@ async def ask_database(request: QueryRequest):
         # Execute SQL
         result = db.run(clean_sql)
         
+        # Calculate confidence score
+        confidence_data = calculate_confidence(request.question, available_columns, result)
+        
         # Check if result is empty or None
         if not result or result.strip() == "" or result == "[]":
             return {
                 "question": request.question,
                 "generated_sql": clean_sql,
-                "answer": f"No data found. The query returned no results. Available columns in your database are: {', '.join(available_columns)}. Please check your question and try again."
+                "answer": f"No data found. The query returned no results. Available columns in your database are: {', '.join(available_columns)}. Please check your question and try again.",
+                "data_found": False,
+                "confidence": 0.0
+            }
+        
+        # Check confidence threshold
+        if not confidence_data["is_reliable"]:
+            return {
+                "question": request.question,
+                "generated_sql": clean_sql,
+                "answer": f"Low confidence result: {result}\n\nNote: This response may not be accurate. Please rephrase your question using these columns: {', '.join(available_columns)}",
+                "data_found": True,
+                "confidence": confidence_data["score"]
             }
         
         return {
             "question": request.question,
             "generated_sql": clean_sql,
-            "answer": result
+            "answer": result,
+            "data_found": True,
+            "confidence": confidence_data["score"]
         }
     except Exception as e:
         error_message = str(e)
@@ -142,20 +205,28 @@ async def ask_database(request: QueryRequest):
         if "no such column" in error_message.lower():
             return {
                 "answer": f"Error: Column not found in the database.{columns_hint} Please check the column names.",
-                "generated_sql": clean_sql if 'clean_sql' in locals() else "N/A"
+                "generated_sql": clean_sql if 'clean_sql' in locals() else "N/A",
+                "data_found": False,
+                "confidence": 0.0
             }
         elif "no such table" in error_message.lower():
             return {
                 "answer": "Error: Table not found. Please upload a CSV file first.",
-                "generated_sql": "N/A"
+                "generated_sql": "N/A",
+                "data_found": False,
+                "confidence": 0.0
             }
         elif "syntax error" in error_message.lower():
             return {
                 "answer": f"Error: Invalid SQL query generated.{columns_hint} Please try rephrasing your question.",
-                "generated_sql": clean_sql if 'clean_sql' in locals() else "N/A"
+                "generated_sql": clean_sql if 'clean_sql' in locals() else "N/A",
+                "data_found": False,
+                "confidence": 0.0
             }
         else:
             return {
                 "answer": f"Error: Unable to process your query. {error_message}{columns_hint}",
-                "generated_sql": clean_sql if 'clean_sql' in locals() else "N/A"
+                "generated_sql": clean_sql if 'clean_sql' in locals() else "N/A",
+                "data_found": False,
+                "confidence": 0.0
             }
