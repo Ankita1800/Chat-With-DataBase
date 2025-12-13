@@ -37,6 +37,7 @@ import {
   User as UserIcon,
 } from "lucide-react";
 import AuthModal from "./AuthModal";
+import DocsSidebar from "./DocsSidebar";
 
 // Types
 interface HistoryItem {
@@ -71,9 +72,11 @@ export default function Home() {
   const [isDragOver, setIsDragOver] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historySearch, setHistorySearch] = useState("");
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showStorageInfo, setShowStorageInfo] = useState(true);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMode, setAuthModalMode] = useState<"signin" | "signup">("signin");
+  const [showDocsSidebar, setShowDocsSidebar] = useState(false);
   const [user, setUser] = useState<{ email: string; full_name?: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -276,8 +279,8 @@ export default function Home() {
 
           {/* Navigation */}
           <nav className="hidden md:flex items-center gap-6">
-            <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Blog</a>
-            <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Docs</a>
+            <a href="https://chatwithdb.blogspot.com" target="_blank" rel="noopener noreferrer" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Blog</a>
+            <button onClick={() => setShowDocsSidebar(true)} className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Docs</button>
             <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Contact</a>
           </nav>
 
@@ -305,7 +308,7 @@ export default function Home() {
             ) : (
               <>
                 <button 
-                  onClick={() => setShowAuthModal(true)}
+                  onClick={() => { setAuthModalMode("signin"); setShowAuthModal(true); }}
                   className="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm" 
                   style={{ backgroundColor: '#C17817', color: '#FDFBD4' }} 
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'} 
@@ -314,7 +317,7 @@ export default function Home() {
                   Sign In
                 </button>
                 <button 
-                  onClick={() => setShowAuthModal(true)}
+                  onClick={() => { setAuthModalMode("signup"); setShowAuthModal(true); }}
                   className="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm" 
                   style={{ backgroundColor: '#C17817', color: '#FDFBD4' }} 
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'} 
@@ -793,6 +796,13 @@ export default function Home() {
         isOpen={showAuthModal} 
         onClose={() => setShowAuthModal(false)}
         onSuccess={handleAuthSuccess}
+        initialMode={authModalMode}
+      />
+
+      {/* Docs Sidebar */}
+      <DocsSidebar 
+        isOpen={showDocsSidebar} 
+        onClose={() => setShowDocsSidebar(false)}
       />
     </div>
   );
