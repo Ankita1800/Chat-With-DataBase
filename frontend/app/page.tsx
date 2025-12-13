@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import AuthModal from "./AuthModal";
 import DocsSidebar from "./DocsSidebar";
+import ContactModal from "./ContactModal";
 
 // Types
 interface HistoryItem {
@@ -77,6 +78,7 @@ export default function Home() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"signin" | "signup">("signin");
   const [showDocsSidebar, setShowDocsSidebar] = useState(false);
+  const [showContactModal, setShowContactModal] = useState(false);
   const [user, setUser] = useState<{ email: string; full_name?: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -279,9 +281,9 @@ export default function Home() {
 
           {/* Navigation */}
           <nav className="hidden md:flex items-center gap-6">
-            <a href="https://chatwithdb.blogspot.com" target="_blank" rel="noopener noreferrer" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Blog</a>
+            <a href="https://ankitaatech700.blogspot.com/2025/12/chat-with-database-ai-powered-natural.html" target="_blank" rel="noopener noreferrer" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Blog</a>
             <button onClick={() => setShowDocsSidebar(true)} className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Docs</button>
-            <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Contact</a>
+            <button onClick={() => setShowContactModal(true)} className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Contact</button>
           </nav>
 
           {/* Action Buttons */}
@@ -803,6 +805,12 @@ export default function Home() {
       <DocsSidebar 
         isOpen={showDocsSidebar} 
         onClose={() => setShowDocsSidebar(false)}
+      />
+
+      {/* Contact Modal */}
+      <ContactModal 
+        isOpen={showContactModal} 
+        onClose={() => setShowContactModal(false)}
       />
     </div>
   );
