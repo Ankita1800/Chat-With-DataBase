@@ -33,7 +33,10 @@ import {
   Lock,
   Server,
   HardDrive,
+  LogOut,
+  User as UserIcon,
 } from "lucide-react";
+import AuthModal from "./AuthModal";
 
 // Types
 interface HistoryItem {
@@ -70,10 +73,12 @@ export default function Home() {
   const [historySearch, setHistorySearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [showStorageInfo, setShowStorageInfo] = useState(true);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [user, setUser] = useState<{ email: string; full_name?: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load history from localStorage on mount
+  // Load history and user from localStorage on mount
   useEffect(() => {
     const savedHistory = localStorage.getItem("chatHistory");
     if (savedHistory) {
@@ -81,6 +86,11 @@ export default function Home() {
         ...item,
         timestamp: new Date(item.timestamp)
       })));
+    }
+
+    const savedUser = localStorage.getItem("user");
+    if (savedUser) {
+      setUser(JSON.parse(savedUser));
     }
   }, []);
 
@@ -90,6 +100,19 @@ export default function Home() {
       localStorage.setItem("chatHistory", JSON.stringify(history));
     }
   }, [history]);
+
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    setUser(null);
+  };
+
+  // Handle successful authentication
+  const handleAuthSuccess = (token: string, user: any) => {
+    setUser(user);
+    setShowAuthModal(false);
+  };
 
   // Handle File Upload
   const handleFileUpload = async () => {
@@ -254,19 +277,53 @@ export default function Home() {
           {/* Navigation */}
           <nav className="hidden md:flex items-center gap-6">
             <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Blog</a>
-            <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Pricing</a>
             <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Docs</a>
             <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Contact</a>
           </nav>
 
           {/* Action Buttons */}
           <div className="flex items-center gap-3">
-            <button className="px-4 py-2 text-sm font-medium transition-colors" style={{ color: '#713600' }} onMouseEnter={(e) => e.currentTarget.style.color = '#8B5A00'} onMouseLeave={(e) => e.currentTarget.style.color = '#713600'}>
-              Sign In
-            </button>
-            <button className="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm" style={{ backgroundColor: '#C17817', color: '#FDFBD4' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}>
-              Get Started
-            </button>
+            {user ? (
+              <>
+                <div className="flex items-center gap-3 px-4 py-2 rounded-lg" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)' }}>
+                  <UserIcon className="w-4 h-4" style={{ color: '#713600' }} />
+                  <span className="text-sm font-medium" style={{ color: '#713600' }}>
+                    {user.full_name || user.email}
+                  </span>
+                </div>
+                <button 
+                  onClick={handleLogout}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2" 
+                  style={{ backgroundColor: '#C17817', color: '#FDFBD4' }} 
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'} 
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
+                >
+                  <LogOut className="w-4 h-4" />
+                  Logout
+                </button>
+              </>
+            ) : (
+              <>
+                <button 
+                  onClick={() => setShowAuthModal(true)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm" 
+                  style={{ backgroundColor: '#C17817', color: '#FDFBD4' }} 
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'} 
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
+                >
+                  Sign In
+                </button>
+                <button 
+                  onClick={() => setShowAuthModal(true)}
+                  className="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm" 
+                  style={{ backgroundColor: '#C17817', color: '#FDFBD4' }} 
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'} 
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
+                >
+                  Sign Up
+                </button>
+              </>
+            )}
           </div>
         </div>
       </header>
@@ -434,21 +491,6 @@ export default function Home() {
                 >
                   <Folder className="w-4 h-4" style={{ color: '#8B5A00' }} />
                   <span className="text-sm" style={{ color: '#713600' }}>Export Data</span>
-                </button>
-                <button 
-                  onClick={() => {
-                    if (isUploaded) {
-                      setQuestion(`Show me a summary of all columns with their data types and sample values`);
-                    }
-                  }}
-                  disabled={!isUploaded}
-                  className="w-full flex items-center gap-2 p-3 rounded-lg transition-all text-left" 
-                  style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8', opacity: isUploaded ? 1 : 0.5, cursor: isUploaded ? 'pointer' : 'not-allowed' }} 
-                  onMouseEnter={(e) => { if (isUploaded) { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; } }} 
-                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#FDFBD4'; }}
-                >
-                  <BarChart3 className="w-4 h-4" style={{ color: '#8B5A00' }} />
-                  <span className="text-sm" style={{ color: '#713600' }}>View Analytics</span>
                 </button>
               </div>
             </div>
@@ -745,6 +787,13 @@ export default function Home() {
           )}
         </main>
       </div>
+
+      {/* Auth Modal */}
+      <AuthModal 
+        isOpen={showAuthModal} 
+        onClose={() => setShowAuthModal(false)}
+        onSuccess={handleAuthSuccess}
+      />
     </div>
   );
 }

@@ -3,13 +3,20 @@ import re
 import shutil
 import pandas as pd
 import sqlite3
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_community.utilities import SQLDatabase
 from langchain_classic.chains import create_sql_query_chain
+from datetime import timedelta
+from auth import (
+    UserCreate, UserLogin, Token, get_password_hash, verify_password,
+    create_access_token, get_user_by_email, create_user, update_last_login,
+    get_current_user, exchange_google_code, exchange_github_code,
+    get_user_by_provider, ACCESS_TOKEN_EXPIRE_MINUTES
+)
 
 # 1. Load Environment Variables
 load_dotenv()
@@ -38,9 +45,202 @@ async def root():
         "endpoints": {
             "upload": "POST /upload - Upload a CSV file",
             "ask": "POST /ask - Ask questions about your data",
+            "auth": "POST /auth/* - Authentication endpoints",
             "docs": "GET /docs - API documentation"
         }
     }
+
+# ============ AUTHENTICATION ENDPOINTS ============
+
+@app.post("/auth/signup", response_model=Token)
+async def signup(user_data: UserCreate):
+    """Register a new user with email and password"""
+    # Check if user exists
+    existing_user = get_user_by_email(user_data.email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Hash password and create user
+    hashed_password = get_password_hash(user_data.password)
+    user = create_user(
+        email=user_data.email,
+        password_hash=hashed_password,
+        full_name=user_data.full_name,
+        provider="email"
+    )
+    
+    # Create access token
+    access_token = create_access_token(
+        data={"sub": user["email"]},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    
+    update_last_login(user["id"])
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "full_name": user["full_name"]
+        }
+    }
+
+@app.post("/auth/login", response_model=Token)
+async def login(user_data: UserLogin):
+    """Login with email and password"""
+    user = get_user_by_email(user_data.email)
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    if not user.get("password_hash"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"This account uses {user.get('provider')} login. Please use that method."
+        )
+    
+    if not verify_password(user_data.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    # Create access token
+    access_token = create_access_token(
+        data={"sub": user["email"]},
+        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    
+    update_last_login(user["id"])
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "full_name": user["full_name"]
+        }
+    }
+
+@app.post("/auth/google/callback", response_model=Token)
+async def google_callback(code: str, redirect_uri: str):
+    """Handle Google OAuth callback"""
+    try:
+        user_info = await exchange_google_code(code, redirect_uri)
+        
+        email = user_info.get("email")
+        provider_id = user_info.get("id")
+        full_name = user_info.get("name")
+        
+        if not email:
+            raise HTTPException(status_code=400, detail="Email not provided by Google")
+        
+        # Check if user exists with this provider
+        user = get_user_by_provider("google", provider_id)
+        
+        if not user:
+            # Check if email exists with different provider
+            existing_user = get_user_by_email(email)
+            if existing_user:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Email already registered with {existing_user['provider']} provider"
+                )
+            
+            # Create new user
+            user = create_user(
+                email=email,
+                password_hash=None,
+                full_name=full_name,
+                provider="google",
+                provider_id=provider_id
+            )
+        
+        # Create access token
+        access_token = create_access_token(
+            data={"sub": user["email"]},
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        
+        update_last_login(user["id"])
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user["id"],
+                "email": user["email"],
+                "full_name": user["full_name"]
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/auth/github/callback", response_model=Token)
+async def github_callback(code: str):
+    """Handle GitHub OAuth callback"""
+    try:
+        user_info = await exchange_github_code(code)
+        
+        email = user_info.get("email")
+        provider_id = str(user_info.get("id"))
+        full_name = user_info.get("name") or user_info.get("login")
+        
+        if not email:
+            raise HTTPException(status_code=400, detail="Email not provided by GitHub")
+        
+        # Check if user exists with this provider
+        user = get_user_by_provider("github", provider_id)
+        
+        if not user:
+            # Check if email exists with different provider
+            existing_user = get_user_by_email(email)
+            if existing_user:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Email already registered with {existing_user['provider']} provider"
+                )
+            
+            # Create new user
+            user = create_user(
+                email=email,
+                password_hash=None,
+                full_name=full_name,
+                provider="github",
+                provider_id=provider_id
+            )
+        
+        # Create access token
+        access_token = create_access_token(
+            data={"sub": user["email"]},
+            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        )
+        
+        update_last_login(user["id"])
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user["id"],
+                "email": user["email"],
+                "full_name": user["full_name"]
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/auth/me")
+async def get_me(current_user: dict = Depends(get_current_user)):
+    """Get current authenticated user"""
+    return {
+        "id": current_user["id"],
+        "email": current_user["email"],
+        "full_name": current_user["full_name"],
+        "provider": current_user["provider"]
+    }
+
+# ============ END AUTHENTICATION ENDPOINTS ============
 
 # 3. HELPER: Function to get the current DB
 def get_db_chain():
