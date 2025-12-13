@@ -162,9 +162,11 @@ async def ask_database(request: QueryRequest):
         # Check if result is empty or None
         if not result or result.strip() == "" or result == "[]":
             return {
+                "status": "no_data",
+                "message": "No matching records found for your query.",
                 "question": request.question,
                 "generated_sql": clean_sql,
-                "answer": f"No data found. The query returned no results. Available columns in your database are: {', '.join(available_columns)}. Please check your question and try again.",
+                "answer": f"No data found. The query returned no results.",
                 "data_found": False,
                 "confidence": 0.0
             }
@@ -230,3 +232,8 @@ async def ask_database(request: QueryRequest):
                 "data_found": False,
                 "confidence": 0.0
             }
+
+# Run the server
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="127.0.0.1", port=8000)

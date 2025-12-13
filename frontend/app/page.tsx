@@ -2,7 +2,6 @@
 import { useState, useRef, useEffect } from "react";
 import {
   Database,
-  Upload,
   FileUp,
   CheckCircle,
   AlertCircle,
@@ -10,28 +9,30 @@ import {
   Trash2,
   Menu,
   X,
-  Server,
-  Cloud,
-  HardDrive,
   Clock,
   MessageSquare,
   Sparkles,
   Loader2,
-  Info,
-  ChevronRight,
-  Network,
-  Zap,
-  BarChart3,
-  Table,
-  FileText,
   AlertTriangle,
   Bot,
   Send,
   ArrowRight,
   Shield,
-  Cpu,
-  LineChart,
-  PieChart,
+  TrendingUp,
+  Zap,
+  BarChart3,
+  Eye,
+  Brain,
+  Folder,
+  Plus,
+  ChevronRight,
+  Github,
+  Twitter,
+  Linkedin,
+  Mail,
+  Lock,
+  Server,
+  HardDrive,
 } from "lucide-react";
 
 // Types
@@ -48,6 +49,8 @@ interface QueryResult {
   question?: string;
   generated_sql?: string;
   answer: string;
+  status?: string;
+  message?: string;
   confidence?: number;
   data_found?: boolean;
 }
@@ -63,11 +66,10 @@ export default function Home() {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historySearch, setHistorySearch] = useState("");
-  const [showStorageInfo, setShowStorageInfo] = useState(false);
-  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [showStorageInfo, setShowStorageInfo] = useState(true);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -158,49 +160,51 @@ export default function Home() {
     setLoading(true);
     setResult(null);
 
+    const currentQuestion = question;
+
     try {
       const response = await fetch("http://127.0.0.1:8000/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: question }),
+        body: JSON.stringify({ question: currentQuestion }),
       });
       const data: QueryResult = await response.json();
+      data.question = currentQuestion;
       setResult(data);
 
       const historyItem: HistoryItem = {
         id: Date.now().toString(),
-        question: question,
+        question: currentQuestion,
         answer: data.answer,
         sql: data.generated_sql || "",
         timestamp: new Date(),
-        success: !data.answer.toLowerCase().includes("error") && 
-                 !data.answer.toLowerCase().includes("no data found"),
+        success: data.status !== "no_data" && !data.answer.toLowerCase().includes("error"),
       };
       setHistory((prev) => [historyItem, ...prev]);
     } catch (error) {
-      const errorResult = { answer: "Error connecting to backend. Please ensure the server is running." };
+      const errorResult = { question: currentQuestion, answer: "Error connecting to backend. Please ensure the server is running." };
       setResult(errorResult);
     } finally {
       setLoading(false);
+      setQuestion("");
     }
   };
 
   // Load history item
   const loadHistoryItem = (item: HistoryItem) => {
-    setQuestion(item.question);
     setResult({
       question: item.question,
       answer: item.answer,
       generated_sql: item.sql,
     });
-    setSidebarOpen(false);
   };
 
   // Clear history
   const clearHistory = () => {
-    setHistory([]);
-    localStorage.removeItem("chatHistory");
-    setShowClearConfirm(false);
+    if (confirm("Are you sure you want to clear all history?")) {
+      setHistory([]);
+      localStorage.removeItem("chatHistory");
+    }
   };
 
   // Filter history
@@ -210,505 +214,659 @@ export default function Home() {
       item.answer.toLowerCase().includes(historySearch.toLowerCase())
   );
 
-  // Check if response indicates an error or no data
+  // Check if response indicates no data
+  const isNoDataResponse = (result: QueryResult) => {
+    return result.status === "no_data" || 
+           result.answer.toLowerCase().includes("no data found") ||
+           result.answer.toLowerCase().includes("no matching records");
+  };
+
+  // Check if response is error
   const isErrorResponse = (answer: string) => {
     return answer.toLowerCase().includes("error") || 
-           answer.toLowerCase().includes("no data found") ||
-           answer.toLowerCase().includes("not found");
+           answer.toLowerCase().includes("failed");
   };
 
   return (
-    <div className="min-h-screen">
-      {/* Sidebar */}
-      <aside
-        className={`fixed left-0 top-0 h-full w-80 bg-white shadow-2xl z-50 transform transition-transform duration-300 ease-in-out ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
-      >
-        <div className="flex flex-col h-full p-5">
-          {/* Sidebar Header */}
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-100">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-white" />
-              </div>
-              <h2 className="text-lg font-bold text-gray-900">Query History</h2>
-            </div>
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#FDFBD4' }}>
+      {/* Sticky Header */}
+      <header className="sticky top-0 z-50 shadow-sm" style={{ backgroundColor: '#FDFBD4', borderBottom: '1px solid #E8DFC8' }}>
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+          {/* Logo & Nav Toggle */}
+          <div className="flex items-center gap-4">
             <button
-              onClick={() => setSidebarOpen(false)}
-              className="p-2 hover:bg-gray-100 rounded-xl transition-colors"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-2 rounded-lg transition-colors"
+              style={{ backgroundColor: 'transparent' }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
-              <X className="w-5 h-5 text-gray-500" />
+              <Menu className="w-5 h-5" style={{ color: '#713600' }} />
+            </button>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#C17817' }}>
+                <Database className="w-5 h-5" style={{ color: '#FDFBD4' }} />
+              </div>
+              <span className="text-xl font-bold" style={{ color: '#713600' }}>ChatWithDB</span>
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <nav className="hidden md:flex items-center gap-6">
+            <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Blog</a>
+            <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Pricing</a>
+            <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Docs</a>
+            <a href="#" className="transition-colors text-sm font-medium" style={{ color: '#8B5A00' }} onMouseEnter={(e) => e.currentTarget.style.color = '#713600'} onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}>Contact</a>
+          </nav>
+
+          {/* Action Buttons */}
+          <div className="flex items-center gap-3">
+            <button className="px-4 py-2 text-sm font-medium transition-colors" style={{ color: '#713600' }} onMouseEnter={(e) => e.currentTarget.style.color = '#8B5A00'} onMouseLeave={(e) => e.currentTarget.style.color = '#713600'}>
+              Sign In
+            </button>
+            <button className="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm" style={{ backgroundColor: '#C17817', color: '#FDFBD4' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}>
+              Get Started
             </button>
           </div>
+        </div>
+      </header>
 
-          {/* Search */}
-          <div className="relative mb-4">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search history..."
-              value={historySearch}
-              onChange={(e) => setHistorySearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+      {/* Storage Info Banner */}
+      {showStorageInfo && (
+        <div style={{ backgroundColor: 'rgba(193, 120, 23, 0.08)', borderBottom: '1px solid rgba(193, 120, 23, 0.2)' }}>
+          <div className="max-w-7xl mx-auto px-6 py-3">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="w-5 h-5 shrink-0" style={{ color: '#C17817' }} />
+              <p className="text-sm flex-1" style={{ color: '#8B5A00' }}>
+                <strong>Local Storage:</strong> Files stored at <code className="px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>./dynamic.db</code>. 
+                For production, consider using cloud storage (AWS S3, Azure Blob).
+              </p>
+              <button onClick={() => setShowStorageInfo(false)} style={{ color: '#C17817' }} onMouseEnter={(e) => e.currentTarget.style.color = '#8B5A00'} onMouseLeave={(e) => e.currentTarget.style.color = '#C17817'}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
           </div>
+        </div>
+      )}
 
-          {/* History List */}
-          <div className="flex-1 overflow-y-auto space-y-2">
-            {filteredHistory.length === 0 ? (
-              <div className="text-center py-12">
-                <MessageSquare className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-                <p className="text-gray-400">No history yet</p>
-                <p className="text-sm text-gray-300 mt-1">Your queries will appear here</p>
-              </div>
-            ) : (
-              filteredHistory.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => loadHistoryItem(item)}
-                  className="w-full text-left p-4 rounded-xl bg-gray-50 hover:bg-blue-50 transition-all group border border-transparent hover:border-blue-200"
-                >
-                  <div className="flex items-start gap-3">
-                    {item.success ? (
-                      <CheckCircle className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                    ) : (
-                      <AlertCircle className="w-5 h-5 text-red-500 mt-0.5 shrink-0" />
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{item.question}</p>
-                      <p className="text-xs text-gray-500 truncate mt-1">
-                        {item.answer.substring(0, 60)}...
-                      </p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        {item.timestamp.toLocaleString()}
-                      </p>
-                    </div>
+      <div className="flex flex-1">
+        {/* Collapsible Sidebar */}
+        <aside
+          className={`${
+            sidebarOpen ? "w-80" : "w-0"
+          } transition-all duration-300 overflow-hidden flex flex-col`}
+          style={{ backgroundColor: '#F8F4E6', borderRight: '1px solid #E8DFC8' }}
+        >
+          <div className="p-6 flex-1 overflow-y-auto">
+            {/* Database Connections */}
+            <div className="mb-6">
+              <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#8B5A00' }}>
+                Database Connections
+              </h3>
+              {isUploaded ? (
+                <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }}>
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                    <Database className="w-5 h-5" style={{ color: '#C17817' }} />
                   </div>
-                </button>
-              ))
-            )}
-          </div>
-
-          {/* Clear History */}
-          {history.length > 0 && (
-            <div className="pt-4 border-t border-gray-100">
-              {showClearConfirm ? (
-                <div className="flex gap-2">
-                  <button
-                    onClick={clearHistory}
-                    className="flex-1 py-3 bg-red-500 hover:bg-red-600 rounded-xl text-white text-sm font-medium transition-colors"
-                  >
-                    Confirm Clear
-                  </button>
-                  <button
-                    onClick={() => setShowClearConfirm(false)}
-                    className="flex-1 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl text-gray-700 text-sm font-medium transition-colors"
-                  >
-                    Cancel
-                  </button>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#C17817' }} />
+                      <span className="text-sm font-medium" style={{ color: '#713600' }}>Connected</span>
+                    </div>
+                    <p className="text-xs" style={{ color: '#8B5A00' }}>{columns.length} columns</p>
+                  </div>
                 </div>
               ) : (
                 <button
-                  onClick={() => setShowClearConfirm(true)}
-                  className="w-full flex items-center justify-center gap-2 py-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors font-medium"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex items-center gap-2 p-3 border-2 border-dashed rounded-lg transition-all text-sm font-medium"
+                  style={{ borderColor: '#E8DFC8', color: '#8B5A00', backgroundColor: 'transparent' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; e.currentTarget.style.color = '#C17817'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#8B5A00'; }}
                 >
-                  <Trash2 className="w-4 h-4" />
-                  Clear All History
+                  <Plus className="w-4 h-4" />
+                  <span className="text-sm font-medium">Add Database</span>
                 </button>
               )}
             </div>
-          )}
-        </div>
-      </aside>
 
-      {/* Overlay */}
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
-      {/* Main Content */}
-      <div className="min-h-screen">
-        {/* Header - Dark navbar like AskYourDatabase */}
-        <header className="bg-slate-900 sticky top-0 z-30">
-          <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-            {/* Left: Logo & Menu */}
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors lg:hidden"
-              >
-                <Menu className="w-5 h-5 text-white" />
-              </button>
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                  <Database className="w-5 h-5 text-white" />
-                </div>
-                <span className="text-white font-bold text-lg">ChatWithDB</span>
+            {/* Chat History */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#8B5A00' }}>
+                  Chat History
+                </h3>
+                {history.length > 0 && (
+                  <button
+                    onClick={clearHistory}
+                    className="text-xs"
+                    style={{ color: '#C17817' }}
+                    onMouseEnter={(e) => e.currentTarget.style.color = '#A66212'}
+                    onMouseLeave={(e) => e.currentTarget.style.color = '#C17817'}
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
-            </div>
 
-            {/* Center: Nav Links (desktop) */}
-            <nav className="hidden lg:flex items-center gap-8">
-              <a href="#features" className="text-gray-300 hover:text-white transition-colors text-sm font-medium">Features</a>
-              <a href="#how-it-works" className="text-gray-300 hover:text-white transition-colors text-sm font-medium">How it Works</a>
-              <button
-                onClick={() => setSidebarOpen(true)}
-                className="text-gray-300 hover:text-white transition-colors text-sm font-medium"
-              >
-                History
-              </button>
-            </nav>
-
-            {/* Right: Actions */}
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowStorageInfo(!showStorageInfo)}
-                className="hidden sm:flex items-center gap-2 px-4 py-2 text-gray-300 hover:text-white transition-colors text-sm"
-              >
-                <Info className="w-4 h-4" />
-                Storage
-              </button>
-              {isUploaded && (
-                <button
-                  onClick={() => {
-                    setIsUploaded(false);
-                    setFile(null);
-                    setResult(null);
-                  }}
-                  className="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded-lg transition-colors text-sm font-medium"
-                >
-                  New Upload
-                </button>
-              )}
-            </div>
-          </div>
-        </header>
-
-        {/* Storage Info Panel */}
-        {showStorageInfo && (
-          <div className="bg-amber-50 border-b border-amber-200">
-            <div className="max-w-7xl mx-auto px-6 py-4">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-                <p className="text-sm text-amber-800">
-                  <strong>Local Storage:</strong> Files are stored at <code className="bg-amber-100 px-2 py-0.5 rounded text-amber-900">./dynamic.db</code>. 
-                  For production, use cloud storage (AWS S3, Azure Blob).
-                </p>
-                <button onClick={() => setShowStorageInfo(false)} className="ml-auto text-amber-600 hover:text-amber-800">
-                  <X className="w-4 h-4" />
-                </button>
+              {/* Search */}
+              <div className="relative mb-3">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: '#A66212' }} />
+                <input
+                  type="text"
+                  placeholder="Search history..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="w-full pl-10 pr-3 py-2 rounded-lg text-sm focus:outline-none focus:ring-2"
+                  style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8', color: '#713600' }}
+                  onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; }}
+                  onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
+                />
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Hero Section - Gradient Background */}
-        {!isUploaded && (
-          <section className="hero-gradient">
-            <div className="max-w-7xl mx-auto px-6 pt-20 pb-32">
-              {/* Main Hero Content */}
-              <div className="text-center max-w-4xl mx-auto">
-                <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-900 leading-tight mb-6">
-                  Chat with Your Data
-                  <br />
-                  <span className="bg-gradient-to-r from-blue-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
-                    using AI
-                  </span>
-                </h1>
-                
-                <p className="text-xl md:text-2xl text-gray-600 mb-4">
-                  The best <span className="text-blue-600 font-semibold">AI</span> for your CSV data
-                </p>
-                
-                <p className="text-lg text-gray-500 max-w-2xl mx-auto mb-12">
-                  No SQL knowledge required. Upload your CSV file and chat with your data naturally.
-                  Get instant insights powered by AI.
-                </p>
-
-                {/* Upload Card */}
-                <div className="max-w-2xl mx-auto">
-                  <div className="bg-white rounded-3xl shadow-2xl shadow-blue-500/10 p-8 border border-gray-100">
-                    <div
-                      onDragOver={handleDragOver}
-                      onDragLeave={handleDragLeave}
-                      onDrop={handleDrop}
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`upload-area rounded-2xl p-10 text-center cursor-pointer ${
-                        isDragOver ? "drag-over" : ""
-                      }`}
+              {/* History List */}
+              <div className="space-y-2">
+                {filteredHistory.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Clock className="w-8 h-8 mx-auto mb-2" style={{ color: '#D4B896' }} />
+                    <p className="text-sm" style={{ color: '#8B5A00' }}>No history yet</p>
+                  </div>
+                ) : (
+                  filteredHistory.slice(0, 10).map((item) => (
+                    <button
+                      key={item.id}
+                      onClick={() => loadHistoryItem(item)}
+                      className="w-full text-left p-3 rounded-lg transition-all group"
+                      style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 1px 2px rgba(113, 54, 0, 0.05)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
                     >
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept=".csv"
-                        onChange={(e) => setFile(e.target.files?.[0] || null)}
-                        className="hidden"
-                      />
-
-                      {file ? (
-                        <div className="fade-in">
-                          <div className="w-20 h-20 rounded-2xl bg-green-100 flex items-center justify-center mx-auto mb-4">
-                            <CheckCircle className="w-10 h-10 text-green-500" />
-                          </div>
-                          <p className="text-xl font-semibold text-gray-800">{file.name}</p>
-                          <p className="text-gray-500 mt-2">
-                            {(file.size / 1024).toFixed(2)} KB • Ready to upload
+                      <div className="flex items-start gap-2">
+                        {item.success ? (
+                          <CheckCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#C17817' }} />
+                        ) : (
+                          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" style={{ color: '#C17817' }} />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" style={{ color: '#713600' }}>{item.question}</p>
+                          <p className="text-xs mt-1" style={{ color: '#8B5A00' }}>
+                            {item.timestamp.toLocaleDateString()} {item.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           </p>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="w-20 h-20 rounded-2xl bg-blue-50 flex items-center justify-center mx-auto mb-4">
-                            <FileUp className="w-10 h-10 text-blue-500" />
-                          </div>
-                          <p className="text-xl font-semibold text-gray-800 mb-2">
-                            Drop your CSV file here
-                          </p>
-                          <p className="text-gray-500">or click to browse from your computer</p>
-                          <p className="text-sm text-gray-400 mt-4">
-                            Supports CSV files up to 50MB
-                          </p>
-                        </>
-                      )}
-                    </div>
-
-                    {/* Progress Bar */}
-                    {isUploading && (
-                      <div className="mt-6">
-                        <div className="flex justify-between text-sm mb-2">
-                          <span className="text-gray-600 font-medium">Uploading...</span>
-                          <span className="text-blue-600 font-semibold">{uploadProgress}%</span>
-                        </div>
-                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full progress-bar rounded-full transition-all duration-300"
-                            style={{ width: `${uploadProgress}%` }}
-                          />
                         </div>
                       </div>
-                    )}
-
-                    {/* Upload Button */}
-                    {file && !isUploading && (
-                      <button
-                        onClick={handleFileUpload}
-                        className="w-full mt-6 py-4 btn-gradient rounded-xl text-white font-semibold text-lg flex items-center justify-center gap-3"
-                      >
-                        <Sparkles className="w-5 h-5" />
-                        Start Chatting with Your Data
-                        <ArrowRight className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-                </div>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
-          </section>
-        )}
 
-        {/* Features Section */}
-        {!isUploaded && (
-          <section id="features" className="py-24 bg-white">
-            <div className="max-w-7xl mx-auto px-6">
-              <div className="text-center mb-16">
-                <h2 className="text-4xl font-bold text-gray-900 mb-4">
-                  The AI Chatbot that <span className="text-blue-600">just works</span>
-                </h2>
-                <p className="text-xl text-gray-500 max-w-2xl mx-auto">
-                  Query, visualize, and analyze your data by asking questions with the help of AI
+            {/* Quick Actions */}
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#8B5A00' }}>
+                Quick Actions
+              </h3>
+              <div className="space-y-2">
+                <button className="w-full flex items-center gap-2 p-3 rounded-lg transition-all text-left" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#FDFBD4'; }}>
+                  <Folder className="w-4 h-4" style={{ color: '#8B5A00' }} />
+                  <span className="text-sm" style={{ color: '#713600' }}>Export Data</span>
+                </button>
+                <button className="w-full flex items-center gap-2 p-3 rounded-lg transition-all text-left" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#FDFBD4'; }}>
+                  <BarChart3 className="w-4 h-4" style={{ color: '#8B5A00' }} />
+                  <span className="text-sm" style={{ color: '#713600' }}>View Analytics</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <main className="flex-1 overflow-y-auto">
+          {!isUploaded ? (
+            /* Hero Section & Upload */
+            <div className="max-w-4xl mx-auto px-6 py-16">
+              {/* Hero */}
+              <div className="text-center mb-12">
+                <h1 className="text-5xl font-bold mb-4" style={{ color: '#713600' }}>
+                  Chat with Your Database<br />using AI
+                </h1>
+                <p className="text-xl mb-2" style={{ color: '#8B5A00' }}>
+                  The best <span className="font-semibold" style={{ color: '#C17817' }}>AI</span> for your CSV data
+                </p>
+                <p className="max-w-2xl mx-auto" style={{ color: '#A66212' }}>
+                  No SQL knowledge required. Upload your CSV file and chat with your data naturally. Get instant insights powered by AI.
                 </p>
               </div>
 
-              <div className="grid md:grid-cols-3 gap-8">
-                {/* Feature 1 */}
-                <div className="feature-card text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center mx-auto mb-6">
-                    <Zap className="w-8 h-8 text-blue-600" />
-                  </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-3">Instant Analysis</h3>
-                  <p className="text-gray-500">
-                    Get answers in seconds. No waiting, no complex queries. Just ask and receive insights instantly.
-                  </p>
-                </div>
+              {/* Upload Area */}
+              <div className="max-w-2xl mx-auto">
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => fileInputRef.current?.click()}
+                  className="upload-area border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all"
+                  style={{
+                    borderColor: isDragOver ? '#C17817' : '#E8DFC8',
+                    backgroundColor: isDragOver ? 'rgba(193, 120, 23, 0.05)' : 'rgba(248, 244, 230, 0.5)'
+                  }}
+                  onMouseEnter={(e) => { if (!isDragOver) { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; } }}
+                  onMouseLeave={(e) => { if (!isDragOver) { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = 'rgba(248, 244, 230, 0.5)'; } }}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    className="hidden"
+                  />
 
-                {/* Feature 2 */}
-                <div className="feature-card text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-purple-100 flex items-center justify-center mx-auto mb-6">
-                    <MessageSquare className="w-8 h-8 text-purple-600" />
-                  </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-3">Natural Language</h3>
-                  <p className="text-gray-500">
-                    Ask questions in plain English. Our AI understands context and delivers accurate results.
-                  </p>
-                </div>
-
-                {/* Feature 3 */}
-                <div className="feature-card text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-green-100 flex items-center justify-center mx-auto mb-6">
-                    <Shield className="w-8 h-8 text-green-600" />
-                  </div>
-                  <h3 className="text-xl font-bold text-gray-900 mb-3">Secure & Private</h3>
-                  <p className="text-gray-500">
-                    Your data stays on your machine. We prioritize security and never store your sensitive information.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Chat Interface - When Uploaded */}
-        {isUploaded && (
-          <div className="max-w-4xl mx-auto px-6 py-8">
-            {/* Database Status */}
-            <div className="bg-white rounded-2xl shadow-lg shadow-gray-200/50 p-6 mb-6 border border-gray-100">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                    <Database className="w-7 h-7 text-white" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                      <h3 className="text-lg font-bold text-gray-900">Database Connected</h3>
+                  {file ? (
+                    <div className="fade-in">
+                      <div className="w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                        <CheckCircle className="w-8 h-8" style={{ color: '#C17817' }} />
+                      </div>
+                      <p className="text-lg font-semibold" style={{ color: '#713600' }}>{file.name}</p>
+                      <p className="mt-1" style={{ color: '#8B5A00' }}>
+                        {(file.size / 1024).toFixed(2)} KB • Ready to upload
+                      </p>
                     </div>
-                    <p className="text-gray-500 text-sm mt-1">
-                      {columns.length} columns: {columns.join(", ")}
+                  ) : (
+                    <>
+                      <div className="w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)' }}>
+                        <FileUp className="w-8 h-8" style={{ color: '#C17817' }} />
+                      </div>
+                      <p className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>
+                        Drop your CSV file here
+                      </p>
+                      <p style={{ color: '#8B5A00' }}>or click to browse from your computer</p>
+                    </>
+                  )}
+                </div>
+
+                {/* Progress Bar */}
+                {isUploading && (
+                  <div className="mt-6">
+                    <div className="flex justify-between text-sm mb-2">
+                      <span className="font-medium" style={{ color: '#8B5A00' }}>Uploading...</span>
+                      <span className="font-semibold" style={{ color: '#C17817' }}>{uploadProgress}%</span>
+                    </div>
+                    <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: '#E8DFC8' }}>
+                      <div
+                        className="h-full rounded-full transition-all duration-300"
+                        style={{ width: `${uploadProgress}%`, backgroundColor: '#C17817' }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Upload Button */}
+                {file && !isUploading && (
+                  <button
+                    onClick={handleFileUpload}
+                    className="w-full mt-6 py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-3 transition-all shadow-sm"
+                    style={{ backgroundColor: '#C17817', color: '#FDFBD4' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#A66212'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(113, 54, 0, 0.1), 0 2px 4px -1px rgba(113, 54, 0, 0.06)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#C17817'; e.currentTarget.style.boxShadow = '0 1px 2px 0 rgba(113, 54, 0, 0.05)'; }}
+                  >
+                    <Sparkles className="w-5 h-5" />
+                    Start Analyzing Your Data
+                    <ArrowRight className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Features Section */}
+              <div className="mt-20">
+                <div className="text-center mb-12">
+                  <h2 className="text-3xl font-bold mb-3" style={{ color: '#713600' }}>
+                    Powerful Features for Data Analysis
+                  </h2>
+                  <p style={{ color: '#8B5A00' }}>Everything you need to analyze your data effectively</p>
+                </div>
+
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {/* Feature 1 */}
+                  <div className="feature-card p-6 rounded-xl transition-all" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(113, 54, 0, 0.1), 0 4px 6px -2px rgba(113, 54, 0, 0.05)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}>
+                    <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)' }}>
+                      <MessageSquare className="w-6 h-6" style={{ color: '#C17817' }} />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>Natural Language SQL</h3>
+                    <p className="text-sm" style={{ color: '#8B5A00' }}>
+                      Ask questions in plain English and get instant SQL queries generated automatically.
+                    </p>
+                  </div>
+
+                  {/* Feature 2 */}
+                  <div className="feature-card p-6 rounded-xl transition-all" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(113, 54, 0, 0.1), 0 4px 6px -2px rgba(113, 54, 0, 0.05)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}>
+                    <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                      <BarChart3 className="w-6 h-6" style={{ color: '#C17817' }} />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>Data Visualization</h3>
+                    <p className="text-sm" style={{ color: '#8B5A00' }}>
+                      Transform complex data into beautiful charts and graphs for better insights.
+                    </p>
+                  </div>
+
+                  {/* Feature 3 */}
+                  <div className="feature-card p-6 rounded-xl transition-all" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(113, 54, 0, 0.1), 0 4px 6px -2px rgba(113, 54, 0, 0.05)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}>
+                    <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)' }}>
+                      <Shield className="w-6 h-6" style={{ color: '#C17817' }} />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>Security</h3>
+                    <p className="text-sm" style={{ color: '#8B5A00' }}>
+                      Your data stays secure with encrypted storage and protected connections.
+                    </p>
+                  </div>
+
+                  {/* Feature 4 */}
+                  <div className="feature-card p-6 rounded-xl transition-all" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(113, 54, 0, 0.1), 0 4px 6px -2px rgba(113, 54, 0, 0.05)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}>
+                    <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.2)' }}>
+                      <TrendingUp className="w-6 h-6" style={{ color: '#C17817' }} />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>Real-time Analysis</h3>
+                    <p className="text-sm" style={{ color: '#8B5A00' }}>
+                      Get instant answers to your questions with real-time data processing.
+                    </p>
+                  </div>
+
+                  {/* Feature 5 */}
+                  <div className="feature-card p-6 rounded-xl transition-all" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(113, 54, 0, 0.1), 0 4px 6px -2px rgba(113, 54, 0, 0.05)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}>
+                    <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.12)' }}>
+                      <Brain className="w-6 h-6" style={{ color: '#C17817' }} />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>Self-learning</h3>
+                    <p className="text-sm" style={{ color: '#8B5A00' }}>
+                      AI learns from your queries to provide better and more accurate results.
+                    </p>
+                  </div>
+
+                  {/* Feature 6 */}
+                  <div className="feature-card p-6 rounded-xl transition-all" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => e.currentTarget.style.boxShadow = '0 10px 15px -3px rgba(113, 54, 0, 0.1), 0 4px 6px -2px rgba(113, 54, 0, 0.05)'} onMouseLeave={(e) => e.currentTarget.style.boxShadow = 'none'}>
+                    <div className="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.18)' }}>
+                      <Zap className="w-6 h-6" style={{ color: '#C17817' }} />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>Business Intelligence</h3>
+                    <p className="text-sm" style={{ color: '#8B5A00' }}>
+                      Gain actionable insights and make data-driven decisions faster.
                     </p>
                   </div>
                 </div>
               </div>
             </div>
-
-            {/* Chat Input */}
-            <div className="bg-white rounded-2xl shadow-lg shadow-gray-200/50 p-6 mb-6 border border-gray-100">
-              <div className="flex gap-4">
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    value={question}
-                    onChange={(e) => setQuestion(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && askAI()}
-                    placeholder="Ask anything about your data..."
-                    className="w-full px-6 py-4 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-lg"
-                  />
-                </div>
-                <button
-                  onClick={askAI}
-                  disabled={loading || !question.trim()}
-                  className="px-8 btn-gradient rounded-xl text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                >
-                  {loading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <>
-                      <Send className="w-5 h-5" />
-                      Ask
-                    </>
-                  )}
-                </button>
-              </div>
-
-              {/* Quick Suggestions */}
-              <div className="flex flex-wrap gap-2 mt-4">
-                {columns.slice(0, 3).map((col) => (
-                  <button
-                    key={col}
-                    onClick={() => setQuestion(`What are all the ${col} values?`)}
-                    className="px-4 py-2 text-sm bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 hover:border-blue-200 rounded-lg text-gray-600 transition-all"
-                  >
-                    Show {col}
-                  </button>
-                ))}
-                <button
-                  onClick={() => setQuestion("How many rows are in the table?")}
-                  className="px-4 py-2 text-sm bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 hover:border-blue-200 rounded-lg text-gray-600 transition-all"
-                >
-                  Count rows
-                </button>
-                <button
-                  onClick={() => setQuestion("Show me a summary of the data")}
-                  className="px-4 py-2 text-sm bg-gray-100 hover:bg-blue-50 hover:text-blue-600 border border-gray-200 hover:border-blue-200 rounded-lg text-gray-600 transition-all"
-                >
-                  Data summary
-                </button>
-              </div>
-            </div>
-
-            {/* Result Display */}
-            {result && (
-              <div className={`rounded-2xl p-6 fade-in border ${
-                isErrorResponse(result.answer) 
-                  ? "bg-red-50 border-red-200" 
-                  : "bg-white shadow-lg shadow-gray-200/50 border-gray-100"
-              }`}>
-                {isErrorResponse(result.answer) ? (
-                  <>
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-red-100 flex items-center justify-center shrink-0">
-                        <AlertCircle className="w-6 h-6 text-red-500" />
+          ) : (
+            /* Chat Interface */
+            <div className="max-w-5xl mx-auto px-6 py-8">
+              {/* Database Info */}
+              <div className="rounded-xl p-6 mb-6" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                      <Database className="w-6 h-6" style={{ color: '#C17817' }} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#C17817' }} />
+                        <h3 className="text-lg font-semibold" style={{ color: '#713600' }}>Database Connected</h3>
                       </div>
-                      <div>
-                        <h3 className="text-lg font-bold text-red-600">Query Issue</h3>
-                        <p className="text-gray-600 mt-2">{result.answer}</p>
-                        <div className="mt-4 p-4 bg-white rounded-xl border border-red-100">
-                          <p className="text-sm text-gray-500">
-                            <strong className="text-blue-600">Tip:</strong> Try asking about: {columns.join(", ")}
-                          </p>
+                      <p className="text-sm mt-1" style={{ color: '#8B5A00' }}>
+                        {columns.length} columns available: {columns.slice(0, 5).join(", ")}
+                        {columns.length > 5 && "..."}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setIsUploaded(false);
+                      setFile(null);
+                      setResult(null);
+                    }}
+                    className="px-4 py-2 text-sm rounded-lg transition-colors"
+                    style={{ color: '#8B5A00', backgroundColor: 'transparent' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#713600'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#8B5A00'; e.currentTarget.style.backgroundColor = 'transparent'; }}
+                  >
+                    Change File
+                  </button>
+                </div>
+              </div>
+
+              {/* Query Input */}
+              <div className="rounded-xl p-6 mb-6 shadow-sm" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }}>
+                <div className="flex gap-4">
+                  <div className="flex-1 relative">
+                    <Bot className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: '#C17817' }} />
+                    <input
+                      type="text"
+                      value={question}
+                      onChange={(e) => setQuestion(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && !loading && askAI()}
+                      placeholder="Ask anything about your data... (e.g., 'What are the top 5 products by revenue?')"
+                      className="w-full pl-12 pr-4 py-4 rounded-xl text-base focus:outline-none focus:ring-2"
+                      style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8', color: '#713600' }}
+                      onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; }}
+                      onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
+                    />
+                  </div>
+                  <button
+                    onClick={askAI}
+                    disabled={loading || !question.trim()}
+                    className="px-6 py-4 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-sm"
+                    style={{ backgroundColor: '#C17817', color: '#FDFBD4' }}
+                    onMouseEnter={(e) => { if (!loading && question.trim()) e.currentTarget.style.backgroundColor = '#A66212'; }}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
+                  >
+                    {loading ? (
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                    ) : (
+                      <>
+                        <Send className="w-5 h-5" />
+                        Ask AI
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Quick Suggestions */}
+                <div className="flex flex-wrap gap-2 mt-4">
+                  <span className="text-xs font-medium" style={{ color: '#8B5A00' }}>Try:</span>
+                  {columns.slice(0, 3).map((col) => (
+                    <button
+                      key={col}
+                      onClick={() => setQuestion(`Show all ${col} values`)}
+                      className="px-3 py-1.5 text-xs rounded-lg transition-all"
+                      style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8', color: '#713600' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'; e.currentTarget.style.color = '#C17817'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#F8F4E6'; e.currentTarget.style.color = '#713600'; }}
+                    >
+                      Show {col}
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setQuestion("How many rows are in the table?")}
+                    className="px-3 py-1.5 text-xs rounded-lg transition-all"
+                    style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8', color: '#713600' }}
+                    onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'; e.currentTarget.style.color = '#C17817'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#F8F4E6'; e.currentTarget.style.color = '#713600'; }}
+                  >
+                    Count rows
+                  </button>
+                </div>
+              </div>
+
+              {/* Results Display */}
+              {result && (
+                <div className="space-y-4">
+                  {/* Query Display */}
+                  <div className="rounded-xl p-4" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }}>
+                    <p className="text-sm mb-2" style={{ color: '#8B5A00' }}>Your Question:</p>
+                    <p className="font-medium" style={{ color: '#713600' }}>{result.question}</p>
+                  </div>
+
+                  {/* SQL Display */}
+                  {result.generated_sql && (
+                    <div className="rounded-xl p-5 overflow-x-auto" style={{ backgroundColor: '#2A1810' }}>
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-xs font-semibold uppercase" style={{ color: '#D4B896' }}>Generated SQL</span>
+                        <button className="text-xs" style={{ color: '#C17817' }} onMouseEnter={(e) => e.currentTarget.style.color = '#D4A574'} onMouseLeave={(e) => e.currentTarget.style.color = '#C17817'}>Copy</button>
+                      </div>
+                      <code className="text-sm font-mono" style={{ color: '#D4A574' }}>
+                        {result.generated_sql}
+                      </code>
+                    </div>
+                  )}
+
+                  {/* Answer Display */}
+                  {isNoDataResponse(result) ? (
+                    /* No Data Found State */
+                    <div className="rounded-xl p-6" style={{ backgroundColor: 'rgba(193, 120, 23, 0.08)', border: '1px solid rgba(193, 120, 23, 0.2)' }}>
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                          <AlertTriangle className="w-6 h-6" style={{ color: '#C17817' }} />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>No Data Found</h3>
+                          <p className="mb-4" style={{ color: '#8B5A00' }}>{result.message || result.answer}</p>
+                          <div className="rounded-lg p-4" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }}>
+                            <p className="text-sm font-medium mb-2" style={{ color: '#713600' }}>Available columns to query:</p>
+                            <div className="flex flex-wrap gap-2">
+                              {columns.map((col) => (
+                                <span key={col} className="px-3 py-1 rounded-md text-xs font-medium" style={{ backgroundColor: '#F8F4E6', color: '#713600' }}>
+                                  {col}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shrink-0">
-                        <Bot className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <h3 className="text-lg font-bold text-gray-900">Answer</h3>
-                        <p className="text-gray-700 mt-2 text-lg leading-relaxed">{result.answer}</p>
+                  ) : isErrorResponse(result.answer) ? (
+                    /* Error State */
+                    <div className="rounded-xl p-6" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)', border: '1px solid rgba(193, 120, 23, 0.25)' }}>
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(193, 120, 23, 0.2)' }}>
+                          <AlertCircle className="w-6 h-6" style={{ color: '#C17817' }} />
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>Query Error</h3>
+                          <p style={{ color: '#8B5A00' }}>{result.answer}</p>
+                        </div>
                       </div>
                     </div>
-
-                    {result.generated_sql && (
-                      <div className="mt-6 p-4 bg-slate-900 rounded-xl overflow-x-auto">
-                        <p className="text-xs text-gray-400 mb-2 font-medium">Generated SQL</p>
-                        <code className="text-sm text-emerald-400 font-mono">
-                          {result.generated_sql}
-                        </code>
+                  ) : (
+                    /* Success State */
+                    <div className="rounded-xl p-6" style={{ backgroundColor: 'rgba(193, 120, 23, 0.05)', border: '1px solid rgba(193, 120, 23, 0.15)' }}>
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                          <CheckCircle className="w-6 h-6" style={{ color: '#C17817' }} />
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>Result</h3>
+                          <div className="whitespace-pre-wrap rounded-lg p-4" style={{ color: '#713600', backgroundColor: '#FDFBD4', border: '1px solid rgba(193, 120, 23, 0.15)' }}>
+                            {result.answer}
+                          </div>
+                        </div>
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Footer */}
-        <footer className="bg-slate-900 text-white py-12 mt-auto">
-          <div className="max-w-7xl mx-auto px-6">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                  <Database className="w-5 h-5 text-white" />
+                    </div>
+                  )}
                 </div>
-                <span className="font-bold text-lg">ChatWithDB</span>
+              )}
+
+              {/* Loading State */}
+              {loading && (
+                <div className="rounded-xl p-6" style={{ backgroundColor: 'rgba(193, 120, 23, 0.08)', border: '1px solid rgba(193, 120, 23, 0.2)' }}>
+                  <div className="flex items-center gap-4">
+                    <Loader2 className="w-8 h-8 animate-spin" style={{ color: '#C17817' }} />
+                    <div>
+                      <p className="font-medium" style={{ color: '#713600' }}>Analyzing your data...</p>
+                      <p className="text-sm mt-1" style={{ color: '#8B5A00' }}>Generating SQL query and fetching results</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* Footer */}
+      <footer className="mt-auto" style={{ backgroundColor: '#2A1810', color: '#FDFBD4' }}>
+        <div className="max-w-7xl mx-auto px-6 py-12">
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
+            {/* Company Info */}
+            <div>
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#C17817' }}>
+                  <Database className="w-4 h-4" style={{ color: '#FDFBD4' }} />
+                </div>
+                <span className="text-lg font-bold">ChatWithDB</span>
               </div>
-              <p className="text-gray-400 text-sm">
-                Powered by AI • Built with FastAPI & Next.js
+              <p className="text-sm mb-4" style={{ color: '#D4B896' }}>
+                AI-powered database chat interface for instant insights and data analysis.
               </p>
-              <div className="flex items-center gap-6 text-sm text-gray-400">
-                <span>© 2025 ChatWithDB</span>
+              <div className="flex gap-3">
+                <a href="#" className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors" style={{ backgroundColor: '#3D2418' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#4D3020'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#3D2418'}>
+                  <Twitter className="w-4 h-4" />
+                </a>
+                <a href="#" className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors" style={{ backgroundColor: '#3D2418' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#4D3020'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#3D2418'}>
+                  <Github className="w-4 h-4" />
+                </a>
+                <a href="#" className="w-9 h-9 rounded-lg flex items-center justify-center transition-colors" style={{ backgroundColor: '#3D2418' }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#4D3020'} onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#3D2418'}>
+                  <Linkedin className="w-4 h-4" />
+                </a>
+              </div>
+            </div>
+
+            {/* Product */}
+            <div>
+              <h4 className="text-sm font-semibold mb-4">Product</h4>
+              <ul className="space-y-3 text-sm" style={{ color: '#D4B896' }}>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Features</a></li>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Pricing</a></li>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Integrations</a></li>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>API</a></li>
+              </ul>
+            </div>
+
+            {/* Resources */}
+            <div>
+              <h4 className="text-sm font-semibold mb-4">Resources</h4>
+              <ul className="space-y-3 text-sm" style={{ color: '#D4B896' }}>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Documentation</a></li>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Blog</a></li>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Tutorials</a></li>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Support</a></li>
+              </ul>
+            </div>
+
+            {/* Company */}
+            <div>
+              <h4 className="text-sm font-semibold mb-4">Company</h4>
+              <ul className="space-y-3 text-sm" style={{ color: '#D4B896' }}>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>About</a></li>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Contact</a></li>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Privacy</a></li>
+                <li><a href="#" className="transition-colors" style={{ color: '#D4B896' }} onMouseEnter={(e) => e.currentTarget.style.color = '#FDFBD4'} onMouseLeave={(e) => e.currentTarget.style.color = '#D4B896'}>Terms</a></li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="pt-8 flex flex-col md:flex-row items-center justify-between gap-4" style={{ borderTop: '1px solid #3D2418' }}>
+            <p className="text-sm" style={{ color: '#D4B896' }}>
+              © 2025 ChatWithDB. All rights reserved.
+            </p>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2 text-xs" style={{ color: '#D4B896' }}>
+                <Lock className="w-3 h-3" />
+                <span>SSL Secured</span>
+              </div>
+              <div className="flex items-center gap-2 text-xs" style={{ color: '#D4B896' }}>
+                <Shield className="w-3 h-3" />
+                <span>GDPR Compliant</span>
               </div>
             </div>
           </div>
-        </footer>
-      </div>
+        </div>
+      </footer>
     </div>
   );
 }
