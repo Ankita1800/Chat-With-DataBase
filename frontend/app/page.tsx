@@ -304,16 +304,24 @@ export default function Home() {
                 Database Connections
               </h3>
               {isUploaded ? (
-                <div className="flex items-center gap-3 p-3 rounded-lg" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }}>
-                  <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
-                    <Database className="w-5 h-5" style={{ color: '#C17817' }} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#C17817' }} />
-                      <span className="text-sm font-medium" style={{ color: '#713600' }}>Connected</span>
+                <div className="p-3 rounded-lg" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }}>
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                      <Database className="w-5 h-5" style={{ color: '#C17817' }} />
                     </div>
-                    <p className="text-xs" style={{ color: '#8B5A00' }}>{columns.length} columns</p>
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#C17817' }} />
+                        <span className="text-sm font-medium" style={{ color: '#713600' }}>Connected</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {columns.map((col) => (
+                      <span key={col} className="px-2 py-1 rounded text-xs font-medium" style={{ backgroundColor: '#F8F4E6', color: '#713600', border: '1px solid #E8DFC8' }}>
+                        {col}
+                      </span>
+                    ))}
                   </div>
                 </div>
               ) : (
@@ -406,11 +414,39 @@ export default function Home() {
                 Quick Actions
               </h3>
               <div className="space-y-2">
-                <button className="w-full flex items-center gap-2 p-3 rounded-lg transition-all text-left" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#FDFBD4'; }}>
+                <button 
+                  onClick={() => {
+                    if (file) {
+                      const link = document.createElement('a');
+                      link.href = URL.createObjectURL(file);
+                      link.download = file.name;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                      URL.revokeObjectURL(link.href);
+                    }
+                  }}
+                  disabled={!isUploaded}
+                  className="w-full flex items-center gap-2 p-3 rounded-lg transition-all text-left" 
+                  style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8', opacity: isUploaded ? 1 : 0.5, cursor: isUploaded ? 'pointer' : 'not-allowed' }} 
+                  onMouseEnter={(e) => { if (isUploaded) { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; } }} 
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#FDFBD4'; }}
+                >
                   <Folder className="w-4 h-4" style={{ color: '#8B5A00' }} />
                   <span className="text-sm" style={{ color: '#713600' }}>Export Data</span>
                 </button>
-                <button className="w-full flex items-center gap-2 p-3 rounded-lg transition-all text-left" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }} onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; }} onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#FDFBD4'; }}>
+                <button 
+                  onClick={() => {
+                    if (isUploaded) {
+                      setQuestion(`Show me a summary of all columns with their data types and sample values`);
+                    }
+                  }}
+                  disabled={!isUploaded}
+                  className="w-full flex items-center gap-2 p-3 rounded-lg transition-all text-left" 
+                  style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8', opacity: isUploaded ? 1 : 0.5, cursor: isUploaded ? 'pointer' : 'not-allowed' }} 
+                  onMouseEnter={(e) => { if (isUploaded) { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; } }} 
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#FDFBD4'; }}
+                >
                   <BarChart3 className="w-4 h-4" style={{ color: '#8B5A00' }} />
                   <span className="text-sm" style={{ color: '#713600' }}>View Analytics</span>
                 </button>
