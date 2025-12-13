@@ -11,7 +11,7 @@ type DocSection = {
   id: string;
   title: string;
   icon: any;
-  content: JSX.Element;
+  content: React.ReactNode;
 };
 
 export default function DocsSidebar({ isOpen, onClose }: DocsSidebarProps) {
