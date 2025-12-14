@@ -40,6 +40,9 @@ import AuthModal from "./AuthModal";
 import DocsSidebar from "./DocsSidebar";
 import ContactModal from "./ContactModal";
 
+// API Configuration
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+
 // Types
 interface HistoryItem {
   id: string;
@@ -126,20 +129,27 @@ export default function Home() {
     setUploadProgress(0);
 
     const formData = new FormData();
-    formData.append("file", file);
+    formData.append("file", file); // Backend expects "file"
 
     const progressInterval = setInterval(() => {
       setUploadProgress((prev) => Math.min(prev + 10, 90));
     }, 100);
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/upload", {
+      const response = await fetch(`${API_URL}/upload`, {
         method: "POST",
         body: formData,
+        // DO NOT set Content-Type - browser sets it automatically with boundary
       });
-      const data = await response.json();
-      
+
       clearInterval(progressInterval);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+      }
+
+      const data = await response.json();
       setUploadProgress(100);
 
       if (data.message) {
@@ -149,14 +159,14 @@ export default function Home() {
           setIsUploading(false);
         }, 500);
       } else {
-        alert("Upload failed: " + (data.error || "Unknown error"));
-        setIsUploading(false);
+        throw new Error(data.error || "Unknown error");
       }
     } catch (error) {
       clearInterval(progressInterval);
-      console.error(error);
-      alert("Error uploading file");
+      console.error("Upload error:", error);
+      alert(`Error uploading file: ${error instanceof Error ? error.message : "Unknown error"}`);
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -191,7 +201,7 @@ export default function Home() {
     const currentQuestion = question;
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/ask", {
+      const response = await fetch(`${API_URL}/ask`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question: currentQuestion }),

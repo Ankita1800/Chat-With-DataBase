@@ -43,7 +43,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode = "s
         ? { email, password }
         : { email, password, full_name: fullName };
 
-      const response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+      const response = await fetch(`${API_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),

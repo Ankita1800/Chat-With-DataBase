@@ -4,6 +4,8 @@ import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
+
 function GoogleCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -28,7 +30,7 @@ function GoogleCallbackContent() {
     // Exchange code for token
     const exchangeCode = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:8000/auth/google/callback', {
+        const response = await fetch(`${API_URL}/auth/google/callback`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
