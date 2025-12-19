@@ -7,6 +7,9 @@ langchain-community
 langchain
 python-multipart
 pydantic[email]
-passlib[bcrypt]
-python-jose[cryptography]
+supabase
+gotrue
 httpx
+pyjwt[crypto]
+sqlalchemy
+psycopg2-binary

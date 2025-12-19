@@ -1,11 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
 import { X, Mail, Lock, User, Github } from "lucide-react";
+import { supabase } from "../lib/supabase";
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (token: string, user: any) => void;
+  onSuccess: () => void;
   initialMode?: "signin" | "signup";
 }
 
@@ -38,47 +39,94 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode = "s
     setLoading(true);
 
     try {
-      const endpoint = mode === "signin" ? "/auth/login" : "/auth/signup";
-      const body = mode === "signin" 
-        ? { email, password }
-        : { email, password, full_name: fullName };
+      if (mode === "signin") {
+        // Sign in with Supabase
+        // Reference: https://supabase.com/docs/guides/auth/passwords
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-      const response = await fetch(`${API_URL}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
+        if (error) throw error;
+        
+        onSuccess();
+        onClose();
+      } else {
+        // Sign up with Supabase
+        // Reference: https://supabase.com/docs/guides/auth/passwords#sign-up
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: {
+              full_name: fullName,
+            },
+          },
+        });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.detail || "Authentication failed");
+        if (error) throw error;
+
+        // Check if email confirmation is required
+        if (data?.user && !data.session) {
+          setError("Please check your email to confirm your account.");
+        } else {
+          onSuccess();
+          onClose();
+        }
       }
-
-      const data = await response.json();
-      localStorage.setItem("token", data.access_token);
-      localStorage.setItem("user", JSON.stringify(data.user));
-      onSuccess(data.access_token, data.user);
-      onClose();
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || "Authentication failed");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleGoogleAuth = () => {
-    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
-    const redirectUri = encodeURIComponent("http://localhost:3000/auth/google/callback");
-    const scope = encodeURIComponent("email profile");
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&access_type=offline&prompt=consent`;
-    window.location.href = authUrl;
+  const handleGoogleAuth = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      
+      // Sign in with Google using Supabase
+      // Reference: https://supabase.com/docs/guides/auth/social-login/auth-google
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
+      });
+
+      if (error) throw error;
+      // User will be redirected to Google for authentication
+    } catch (err: any) {
+      setError(err.message || "Google authentication failed");
+      setLoading(false);
+    }
   };
 
-  const handleGithubAuth = () => {
-    const clientId = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID;
-    const redirectUri = encodeURIComponent("http://localhost:3000/auth/github/callback");
-    const authUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=user:email`;
-    window.location.href = authUrl;
+  const handleGithubAuth = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      
+      // Sign in with GitHub using Supabase
+      // Reference: https://supabase.com/docs/guides/auth/social-login/auth-github
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'github',
+        options: {
+          redirectTo: `${window.location.origin}/`,
+        },
+      });
+
+      if (error) throw error;
+      // User will be redirected to GitHub for authentication
+    } catch (err: any) {
+      setError(err.message || "GitHub authentication failed");
+      setLoading(false);
+    }
   };
 
   return (

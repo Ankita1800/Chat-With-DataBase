@@ -1,287 +1,414 @@
 import os
 import re
-import shutil
+import uuid
 import pandas as pd
-import sqlite3
+import time
+from io import BytesIO
+from urllib.parse import quote_plus
+from dotenv import load_dotenv
+
+# CRITICAL: Load .env BEFORE any other imports that use environment variables
+load_dotenv()
+
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_community.utilities import SQLDatabase
 from langchain_classic.chains import create_sql_query_chain
-from datetime import timedelta
-from auth import (
-    UserCreate, UserLogin, Token, get_password_hash, verify_password,
-    create_access_token, get_user_by_email, create_user, update_last_login,
-    get_current_user, exchange_google_code, exchange_github_code,
-    get_user_by_provider, ACCESS_TOKEN_EXPIRE_MINUTES
-)
+from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Float, inspect
+from sqlalchemy.exc import SQLAlchemyError
 
-# 1. Load Environment Variables
-load_dotenv()
+# Import Supabase authentication and configuration
+from backend_auth import get_current_user, AuthUser
+from supabase_config import supabase, STORAGE_BUCKET_NAME, SUPABASE_URL
+
+# 1. Verify Environment Variables Loaded
 api_key = os.getenv("GROQ_API_KEY")
+SUPABASE_URL_BASE = os.getenv("SUPABASE_URL")
+
+# Validate required environment variables
+if not api_key:
+    raise ValueError("GROQ_API_KEY must be set in environment variables")
+if not SUPABASE_URL_BASE:
+    raise ValueError("SUPABASE_URL must be set in environment variables")
+
+# Database Connection Configuration
+# Priority: Use DATABASE_URL from env if available, otherwise construct it
+DATABASE_URL_ENV = os.getenv("DATABASE_URL")
+
+if DATABASE_URL_ENV:
+    print("[INFO] Using DATABASE_URL from environment variable")
+    DATABASE_URL = DATABASE_URL_ENV
+    db_engine = create_engine(
+        DATABASE_URL,
+        pool_pre_ping=True,
+        pool_recycle=3600,
+        connect_args={"connect_timeout": 10}
+    )
+    
+    # Test connection (non-blocking - continue even if it fails)
+    try:
+        with db_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        
+        # Parse and log connection info
+        from urllib.parse import urlparse
+        parsed = urlparse(DATABASE_URL)
+        print(f"[SUCCESS] Connected to: {parsed.hostname}:{parsed.port}")
+    except Exception as e:
+        print(f"[WARNING] Database connection test failed: {type(e).__name__}")
+        print(f"[DETAIL] {str(e)}")
+        print("[INFO] Server will start anyway - database operations will fail until connection is restored")
+else:
+    # Fallback: Construct from components
+    SUPABASE_DB_PASSWORD = os.getenv("SUPABASE_DB_PASSWORD")
+    if not SUPABASE_DB_PASSWORD:
+        raise ValueError("Either DATABASE_URL or SUPABASE_DB_PASSWORD must be set")
+    
+    project_ref = SUPABASE_URL_BASE.replace("https://", "").replace("http://", "").split(".")[0]
+    encoded_password = quote_plus(SUPABASE_DB_PASSWORD)
+    
+    DATABASE_URLS = [
+        f"postgresql://postgres.{project_ref}:{encoded_password}@aws-0-ap-south-1.pooler.supabase.com:5432/postgres",
+        f"postgresql://postgres.{project_ref}:{encoded_password}@aws-0-ap-south-1.pooler.supabase.com:6543/postgres",
+        f"postgresql://postgres:{encoded_password}@db.{project_ref}.supabase.co:5432/postgres",
+    ]
+    
+    print(f"[INFO] Testing {len(DATABASE_URLS)} connection formats...")
+    
+    DATABASE_URL = None
+    db_engine = None
+    
+    for idx, url in enumerate(DATABASE_URLS, 1):
+        parsed_host = url.split("@")[1].split("/")[0] if "@" in url else "unknown"
+        print(f"[TEST {idx}] Host: {parsed_host}")
+        
+        try:
+            test_engine = create_engine(
+                url,
+                pool_pre_ping=True,
+                pool_recycle=3600,
+                connect_args={"connect_timeout": 5}
+            )
+            
+            with test_engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+                
+            print(f"[SUCCESS] Connected using format {idx}: {parsed_host}")
+            DATABASE_URL = url
+            db_engine = test_engine
+            break
+        except Exception as e:
+            print(f"[FAILED {idx}] {type(e).__name__}: {str(e)[:80]}")
+            continue
+    
+    if not DATABASE_URL:
+        print("\n" + "="*80)
+        print("[CRITICAL] All connection attempts failed")
+        print("="*80)
+        print("Add DATABASE_URL to .env with the correct connection string")
+        print("="*80 + "\n")
+        DATABASE_URL = DATABASE_URLS[2]
+        db_engine = create_engine(DATABASE_URL, pool_pre_ping=True)
 
 # 2. Setup the App
-app = FastAPI()
+app = FastAPI(title="Chat with Database API - Supabase Edition")
 
-# Enable CORS (Frontend <-> Backend)
+# Enable CORS with specific origins for production security
+# Reference: https://fastapi.tiangolo.com/tutorial/cors/
+# TODO: Replace with your actual frontend domain in production
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+    # Add your production domain here: "https://yourdomain.com"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,  # Specific origins only, no wildcards in production
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE"],
     allow_headers=["*"],
 )
-
-# Global variable to store the current database connection
-DB_PATH = "dynamic.db"
 
 # Root endpoint
 @app.get("/")
 async def root():
     return {
-        "message": "Chat with Database API is running!",
+        "message": "Chat with Database API - Supabase Edition",
+        "version": "2.0",
+        "authentication": "Supabase Auth",
+        "database": "Supabase PostgreSQL",
+        "storage": "Supabase Storage",
         "endpoints": {
-            "upload": "POST /upload - Upload a CSV file",
-            "ask": "POST /ask - Ask questions about your data",
-            "auth": "POST /auth/* - Authentication endpoints",
-            "docs": "GET /docs - API documentation"
-        }
+            "upload": "POST /upload - Upload a CSV file (requires authentication)",
+            "ask": "POST /ask - Ask questions about your data (requires authentication)",
+            "datasets": "GET /datasets - List your uploaded datasets (requires authentication)",
+            "health": "GET /health - Health check"
+        },
+        "docs": "/docs"
     }
 
-# ============ AUTHENTICATION ENDPOINTS ============
-
-@app.post("/auth/signup", response_model=Token)
-async def signup(user_data: UserCreate):
-    """Register a new user with email and password"""
-    # Check if user exists
-    existing_user = get_user_by_email(user_data.email)
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Hash password and create user
-    hashed_password = get_password_hash(user_data.password)
-    user = create_user(
-        email=user_data.email,
-        password_hash=hashed_password,
-        full_name=user_data.full_name,
-        provider="email"
-    )
-    
-    # Create access token
-    access_token = create_access_token(
-        data={"sub": user["email"]},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    
-    update_last_login(user["id"])
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "full_name": user["full_name"]
-        }
-    }
-
-@app.post("/auth/login", response_model=Token)
-async def login(user_data: UserLogin):
-    """Login with email and password"""
-    user = get_user_by_email(user_data.email)
-    
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    if not user.get("password_hash"):
-        raise HTTPException(
-            status_code=400,
-            detail=f"This account uses {user.get('provider')} login. Please use that method."
-        )
-    
-    if not verify_password(user_data.password, user["password_hash"]):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-    
-    # Create access token
-    access_token = create_access_token(
-        data={"sub": user["email"]},
-        expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    )
-    
-    update_last_login(user["id"])
-    
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "id": user["id"],
-            "email": user["email"],
-            "full_name": user["full_name"]
-        }
-    }
-
-@app.post("/auth/google/callback", response_model=Token)
-async def google_callback(code: str, redirect_uri: str):
-    """Handle Google OAuth callback"""
+@app.get("/health")
+async def health_check():
+    """Health check endpoint for monitoring"""
     try:
-        user_info = await exchange_google_code(code, redirect_uri)
-        
-        email = user_info.get("email")
-        provider_id = user_info.get("id")
-        full_name = user_info.get("name")
-        
-        if not email:
-            raise HTTPException(status_code=400, detail="Email not provided by Google")
-        
-        # Check if user exists with this provider
-        user = get_user_by_provider("google", provider_id)
-        
-        if not user:
-            # Check if email exists with different provider
-            existing_user = get_user_by_email(email)
-            if existing_user:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Email already registered with {existing_user['provider']} provider"
-                )
-            
-            # Create new user
-            user = create_user(
-                email=email,
-                password_hash=None,
-                full_name=full_name,
-                provider="google",
-                provider_id=provider_id
-            )
-        
-        # Create access token
-        access_token = create_access_token(
-            data={"sub": user["email"]},
-            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        )
-        
-        update_last_login(user["id"])
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "full_name": user["full_name"]
-            }
-        }
+        # Test database connection
+        with db_engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        db_status = "connected"
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.post("/auth/github/callback", response_model=Token)
-async def github_callback(code: str):
-    """Handle GitHub OAuth callback"""
-    try:
-        user_info = await exchange_github_code(code)
-        
-        email = user_info.get("email")
-        provider_id = str(user_info.get("id"))
-        full_name = user_info.get("name") or user_info.get("login")
-        
-        if not email:
-            raise HTTPException(status_code=400, detail="Email not provided by GitHub")
-        
-        # Check if user exists with this provider
-        user = get_user_by_provider("github", provider_id)
-        
-        if not user:
-            # Check if email exists with different provider
-            existing_user = get_user_by_email(email)
-            if existing_user:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Email already registered with {existing_user['provider']} provider"
-                )
-            
-            # Create new user
-            user = create_user(
-                email=email,
-                password_hash=None,
-                full_name=full_name,
-                provider="github",
-                provider_id=provider_id
-            )
-        
-        # Create access token
-        access_token = create_access_token(
-            data={"sub": user["email"]},
-            expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        )
-        
-        update_last_login(user["id"])
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "full_name": user["full_name"]
-            }
-        }
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-@app.get("/auth/me")
-async def get_me(current_user: dict = Depends(get_current_user)):
-    """Get current authenticated user"""
+        db_status = f"error: {str(e)[:100]}"
+    
     return {
-        "id": current_user["id"],
-        "email": current_user["email"],
-        "full_name": current_user["full_name"],
-        "provider": current_user["provider"]
+        "status": "healthy" if "connected" in db_status else "degraded",
+        "database": db_status,
+        "storage": "configured",
+        "server": "running"
     }
 
-# ============ END AUTHENTICATION ENDPOINTS ============
+# ============ AUTHENTICATION IS NOW HANDLED BY FRONTEND ============
+# All auth endpoints removed - Supabase Auth handles:
+# - Email/password signup & login
+# - OAuth (Google, GitHub, etc.)
+# - Session management
+# - Token refresh
+# 
+# Backend only verifies Supabase-issued JWTs using get_current_user dependency
+# Reference: https://supabase.com/docs/guides/auth
 
-# 3. HELPER: Function to get the current DB
-def get_db_chain():
-    if not os.path.exists(DB_PATH):
-        raise Exception("No database uploaded yet!")
+# ============ HELPER FUNCTIONS ============
+
+def generate_table_name(user_id: str, filename: str) -> str:
+    """Generate a unique table name for user's dataset"""
+    # Remove file extension and special characters
+    clean_name = re.sub(r'[^a-zA-Z0-9_]', '_', filename.split('.')[0].lower())
+    # Add user prefix and unique ID to avoid collisions
+    unique_id = str(uuid.uuid4())[:8]
+    return f"user_{user_id[:8]}_{clean_name}_{unique_id}"
+
+def create_dynamic_table_from_dataframe(df: pd.DataFrame, table_name: str, user_id: str):
+    """
+    Create a PostgreSQL table dynamically from DataFrame with user_id column
+    Reference: https://docs.sqlalchemy.org/en/20/core/metadata.html
+    """
+    try:
+        print(f"[DEBUG] Creating table {table_name} for user {user_id}")
+        metadata = MetaData()
+        
+        # Define columns based on DataFrame dtypes
+        columns = [
+            Column('id', Integer, primary_key=True, autoincrement=True),
+            Column('user_id', String, nullable=False, index=True)  # Add user_id for RLS
+        ]
+        
+        for col_name in df.columns:
+            dtype = df[col_name].dtype
+            if dtype == 'int64':
+                sql_type = Integer
+            elif dtype == 'float64':
+                sql_type = Float
+            else:
+                sql_type = String
+            columns.append(Column(col_name, sql_type))
+        
+        # Create table
+        print(f"[DEBUG] Creating table structure...")
+        table = Table(table_name, metadata, *columns)
+        metadata.create_all(db_engine)
+        print(f"[DEBUG] Table created successfully")
+        
+        # Insert data with user_id
+        df_with_user = df.copy()
+        df_with_user.insert(0, 'user_id', user_id)
+        
+        print(f"[DEBUG] Inserting {len(df_with_user)} rows...")
+        with db_engine.connect() as conn:
+            df_with_user.to_sql(
+                table_name,
+                conn,
+                if_exists='append',
+                index=False,
+                method='multi'
+            )
+            conn.commit()
+        print(f"[DEBUG] Data inserted successfully")
+        
+        return table_name
+    except Exception as e:
+        print(f"[ERROR] Failed to create table: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+# 3. HELPER: Function to get the user's database connection
+def get_user_db_chain(user_id: str, table_name: str):
+    """
+    Create LangChain SQL chain for user's specific table
+    Only allows access to user's own data through table name restriction
+    """
+    if not table_name:
+        raise HTTPException(status_code=400, detail="No dataset specified")
     
-    db = SQLDatabase.from_uri(f"sqlite:///{DB_PATH}")
+    # Create database URI with schema public
+    db = SQLDatabase.from_uri(
+        DATABASE_URL,
+        include_tables=[table_name],  # Restrict to user's table only
+        sample_rows_in_table_info=3
+    )
+    
     llm = ChatGroq(model="llama-3.3-70b-versatile", groq_api_key=api_key)
     chain = create_sql_query_chain(llm, db)
     return chain, db
 
-# 4. API: Upload CSV and convert to SQL
+# ============ DATA UPLOAD ENDPOINT ============
+
 @app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
+async def upload_file(
+    file: UploadFile = File(...),
+    current_user: AuthUser = Depends(get_current_user)
+):
+    """
+    Upload CSV file to Supabase Storage and create user-scoped PostgreSQL table
+    
+    Flow:
+    1. Verify user authentication (Supabase JWT)
+    2. Upload CSV to Supabase Storage with user_id prefix
+    3. Parse CSV and create dynamic PostgreSQL table
+    4. Store metadata in user_datasets table
+    5. Return success with dataset information
+    
+    Reference:
+    - Storage: https://supabase.com/docs/guides/storage/uploads
+    - Database: https://supabase.com/docs/guides/database/connecting-to-postgres
+    """
     try:
-        # Save the uploaded file temporarily
-        file_location = f"temp_{file.filename}"
-        with open(file_location, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        # Read CSV using Pandas
-        # (Assuming it's a CSV. If you want Excel, use pd.read_excel)
-        df = pd.read_csv(file_location)
-
-        # Connect to a new SQLite DB (Overwriting old one)
-        conn = sqlite3.connect(DB_PATH)
+        # Validate file type
+        if not file.filename or not file.filename.endswith('.csv'):
+            raise HTTPException(status_code=400, detail="Only CSV files are supported")
         
-        # Write the data to a table named 'uploaded_data'
-        df.to_sql("uploaded_data", conn, if_exists="replace", index=False)
-        conn.close()
-
-        # Clean up temp file
-        os.remove(file_location)
-
-        return {"message": "Database created successfully!", "columns": list(df.columns)}
+        # Read file content
+        file_content = await file.read()
+        file_size = len(file_content)
+        
+        # Parse CSV
+        try:
+            df = pd.read_csv(BytesIO(file_content))
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Invalid CSV file: {str(e)}")
+        
+        if df.empty:
+            raise HTTPException(status_code=400, detail="CSV file is empty")
+        
+        # Generate unique identifiers
+        dataset_id = str(uuid.uuid4())
+        table_name = generate_table_name(current_user.id, file.filename)
+        storage_path = f"{current_user.id}/{dataset_id}/{file.filename}"
+        
+        # Upload to Supabase Storage
+        # Reference: https://supabase.com/docs/reference/python/storage-upload
+        try:
+            supabase.storage.from_(STORAGE_BUCKET_NAME).upload(
+                path=storage_path,
+                file=file_content,
+                file_options={
+                    "content-type": "text/csv",
+                    "x-upsert": "false"  # Prevent overwriting
+                }
+            )
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to upload to storage: {str(e)}"
+            )
+        
+        # Create PostgreSQL table with data
+        try:
+            create_dynamic_table_from_dataframe(df, table_name, current_user.id)
+        except Exception as e:
+            # Rollback: delete from storage if table creation fails
+            try:
+                supabase.storage.from_(STORAGE_BUCKET_NAME).remove([storage_path])
+            except:
+                pass
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create database table: {str(e)}"
+            )
+        
+        # Store metadata in user_datasets table
+        try:
+            supabase.table("user_datasets").insert({
+                "id": dataset_id,
+                "user_id": current_user.id,
+                "dataset_name": file.filename.rsplit('.', 1)[0],
+                "original_filename": file.filename,
+                "storage_path": storage_path,
+                "table_name": table_name,
+                "column_names": list(df.columns),
+                "row_count": len(df),
+                "file_size_bytes": file_size
+            }).execute()
+        except Exception as e:
+            # Rollback: delete storage and table if metadata insert fails
+            try:
+                supabase.storage.from_(STORAGE_BUCKET_NAME).remove([storage_path])
+                with db_engine.connect() as conn:
+                    conn.execute(text(f"DROP TABLE IF EXISTS {table_name}"))
+                    conn.commit()
+            except:
+                pass
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to save dataset metadata: {str(e)}"
+            )
+        
+        return {
+            "success": True,
+            "message": "Dataset uploaded successfully!",
+            "dataset_id": dataset_id,
+            "dataset_name": file.filename.rsplit('.', 1)[0],
+            "table_name": table_name,
+            "columns": list(df.columns),
+            "row_count": len(df),
+            "file_size_bytes": file_size
+        }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"error": str(e)}
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
-# 5. Define Input for Chat
+# ============ DATASET MANAGEMENT ENDPOINTS ============
+
+@app.get("/datasets")
+async def list_datasets(current_user: AuthUser = Depends(get_current_user)):
+    """
+    List all datasets for the authenticated user
+    Uses Supabase RLS - user can only see their own datasets
+    """
+    try:
+        response = supabase.table("user_datasets")\
+            .select("*")\
+            .eq("user_id", current_user.id)\
+            .order("created_at", desc=True)\
+            .execute()
+        
+        return {
+            "success": True,
+            "datasets": response.data
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch datasets: {str(e)}")
+
+# ============ QUERY ENDPOINT ============
+
 class QueryRequest(BaseModel):
     question: str
+    dataset_id: str  # User must specify which dataset to query
 
 # Helper: Calculate query relevance/confidence
 def calculate_confidence(question: str, available_columns: list, result: str) -> dict:
@@ -317,33 +444,56 @@ def calculate_confidence(question: str, available_columns: list, result: str) ->
         "column_relevance": column_matches > 0
     }
 
-# 6. API: Chat with the uploaded DB
 @app.post("/ask")
-async def ask_database(request: QueryRequest):
+async def ask_database(
+    request: QueryRequest,
+    current_user: AuthUser = Depends(get_current_user)
+):
+    """
+    Query user's dataset using natural language
+    
+    Security:
+    - User must be authenticated (Supabase JWT)
+    - User can only query their own datasets (verified via user_datasets table)
+    - SQL generation is restricted to user's table only
+    - Row-level data is automatically filtered by user_id in the table
+    
+    Reference:
+    - https://supabase.com/docs/guides/database/postgres/row-level-security
+    """
+    start_time = time.time()
+    
     try:
-        chain, db = get_db_chain()
+        # Verify dataset belongs to user (RLS enforces this, but explicit check for better error messages)
+        dataset_response = supabase.table("user_datasets")\
+            .select("*")\
+            .eq("id", request.dataset_id)\
+            .eq("user_id", current_user.id)\
+            .execute()
         
-        # Get available columns for validation
-        conn = sqlite3.connect(DB_PATH)
-        cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(uploaded_data)")
-        columns_info = cursor.fetchall()
-        available_columns = [col[1].lower() for col in columns_info]  # Get column names
-        conn.close()
+        if not dataset_response.data or len(dataset_response.data) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="Dataset not found or you don't have permission to access it"
+            )
         
-        # Check if the question contains column names that don't exist
-        question_lower = request.question.lower()
-        question_words = re.findall(r'\b\w+\b', question_lower)
+        dataset = dataset_response.data[0]
+        table_name = dataset["table_name"]
+        available_columns = dataset["column_names"]
         
-        # Common words to ignore in validation
-        common_words = {'what', 'is', 'are', 'the', 'a', 'an', 'in', 'of', 'for', 'to', 'from', 'show', 'me', 'get', 'find', 'all', 'list', 'how', 'many', 'much', 'total', 'sum', 'count', 'average', 'max', 'min', 'give'}
+        # Create SQL chain restricted to user's table
+        chain, db = get_user_db_chain(current_user.id, table_name)
         
-        # Generate SQL
-        query_input = {"question": f"Table name is uploaded_data. Available columns: {', '.join(available_columns)}. {request.question}"}
+        # Generate SQL with context
+        query_input = {
+            "question": f"Table name is {table_name}. Available columns: {', '.join(available_columns)}. "
+                       f"IMPORTANT: Add WHERE user_id = '{current_user.id}' to all queries to filter by user. "
+                       f"Question: {request.question}"
+        }
         generated_sql = chain.invoke(query_input)
         
         # Extract only the SQL query from the response
-        sql_pattern = r'(SELECT.*?(?:;|$)|INSERT.*?(?:;|$)|UPDATE.*?(?:;|$)|DELETE.*?(?:;|$))'
+        sql_pattern = r'(SELECT.*?(?:;|$))'
         match = re.search(sql_pattern, generated_sql, re.IGNORECASE | re.DOTALL)
         
         if match:
@@ -353,20 +503,70 @@ async def ask_database(request: QueryRequest):
         else:
             clean_sql = generated_sql.strip()
         
+        # Enforce user_id filter in SQL if not present (safety check)
+        if f"user_id = '{current_user.id}'" not in clean_sql.lower():
+            # Add WHERE clause or append to existing one
+            if "WHERE" in clean_sql.upper():
+                clean_sql = clean_sql.replace("WHERE", f"WHERE user_id = '{current_user.id}' AND", 1)
+            else:
+                # Add WHERE before ORDER BY, GROUP BY, or at the end
+                for keyword in ["ORDER BY", "GROUP BY", "LIMIT"]:
+                    if keyword in clean_sql.upper():
+                        clean_sql = clean_sql.replace(keyword, f"WHERE user_id = '{current_user.id}' {keyword}", 1)
+                        break
+                else:
+                    clean_sql += f" WHERE user_id = '{current_user.id}'"
+        
         # Execute SQL
-        result = db.run(clean_sql)
+        try:
+            result = db.run(clean_sql)
+        except Exception as sql_error:
+            # Log query to history with error
+            supabase.table("query_history").insert({
+                "user_id": current_user.id,
+                "dataset_id": request.dataset_id,
+                "question": request.question,
+                "generated_sql": clean_sql,
+                "success": False,
+                "error_message": str(sql_error),
+                "execution_time_ms": int((time.time() - start_time) * 1000)
+            }).execute()
+            
+            raise HTTPException(
+                status_code=400,
+                detail=f"SQL execution error: {str(sql_error)}"
+            )
         
         # Calculate confidence score
         confidence_data = calculate_confidence(request.question, available_columns, result)
         
-        # Check if result is empty or None
-        if not result or result.strip() == "" or result == "[]":
+        # Determine success status
+        success = result and result.strip() and result != "[]"
+        
+        # Store query in history
+        try:
+            supabase.table("query_history").insert({
+                "user_id": current_user.id,
+                "dataset_id": request.dataset_id,
+                "question": request.question,
+                "generated_sql": clean_sql,
+                "result_data": {"raw": result} if success else None,
+                "success": success,
+                "confidence_score": confidence_data["score"],
+                "execution_time_ms": int((time.time() - start_time) * 1000)
+            }).execute()
+        except Exception as history_error:
+            # Don't fail the request if history logging fails
+            print(f"Warning: Failed to log query history: {history_error}")
+        
+        # Check if result is empty
+        if not success:
             return {
                 "status": "no_data",
                 "message": "No matching records found for your query.",
                 "question": request.question,
                 "generated_sql": clean_sql,
-                "answer": f"No data found. The query returned no results.",
+                "answer": "No data found. The query returned no results.",
                 "data_found": False,
                 "confidence": 0.0
             }
@@ -388,50 +588,14 @@ async def ask_database(request: QueryRequest):
             "data_found": True,
             "confidence": confidence_data["score"]
         }
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        error_message = str(e)
-        
-        # Get available columns for error messages
-        try:
-            conn = sqlite3.connect(DB_PATH)
-            cursor = conn.cursor()
-            cursor.execute("PRAGMA table_info(uploaded_data)")
-            columns_info = cursor.fetchall()
-            available_columns = [col[1] for col in columns_info]
-            conn.close()
-            columns_hint = f" Available columns: {', '.join(available_columns)}."
-        except:
-            columns_hint = ""
-        
-        # Handle specific SQL errors with user-friendly messages
-        if "no such column" in error_message.lower():
-            return {
-                "answer": f"Error: Column not found in the database.{columns_hint} Please check the column names.",
-                "generated_sql": clean_sql if 'clean_sql' in locals() else "N/A",
-                "data_found": False,
-                "confidence": 0.0
-            }
-        elif "no such table" in error_message.lower():
-            return {
-                "answer": "Error: Table not found. Please upload a CSV file first.",
-                "generated_sql": "N/A",
-                "data_found": False,
-                "confidence": 0.0
-            }
-        elif "syntax error" in error_message.lower():
-            return {
-                "answer": f"Error: Invalid SQL query generated.{columns_hint} Please try rephrasing your question.",
-                "generated_sql": clean_sql if 'clean_sql' in locals() else "N/A",
-                "data_found": False,
-                "confidence": 0.0
-            }
-        else:
-            return {
-                "answer": f"Error: Unable to process your query. {error_message}{columns_hint}",
-                "generated_sql": clean_sql if 'clean_sql' in locals() else "N/A",
-                "data_found": False,
-                "confidence": 0.0
-            }
+        raise HTTPException(
+            status_code=500,
+            detail=f"Query failed: {str(e)}"
+        )
 
 # Run the server
 if __name__ == "__main__":

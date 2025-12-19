@@ -39,6 +39,10 @@ import {
 import AuthModal from "./AuthModal";
 import DocsSidebar from "./DocsSidebar";
 import ContactModal from "./ContactModal";
+import { supabase } from "../lib/supabase";
+import { shouldShowStorageWarning, dismissStorageWarning } from "../lib/config";
+import { saveAppState, loadAppState } from "../lib/persistence";
+import type { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
 
 // API Configuration
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -63,6 +67,16 @@ interface QueryResult {
   data_found?: boolean;
 }
 
+interface Dataset {
+  id: string;
+  dataset_name: string;
+  original_filename: string;
+  table_name: string;
+  column_names: string[];
+  row_count: number;
+  created_at: string;
+}
+
 export default function Home() {
   // State
   const [file, setFile] = useState<File | null>(null);
@@ -77,16 +91,69 @@ export default function Home() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historySearch, setHistorySearch] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showStorageInfo, setShowStorageInfo] = useState(true);
+  const [showStorageInfo, setShowStorageInfo] = useState(shouldShowStorageWarning());
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"signin" | "signup">("signin");
   const [showDocsSidebar, setShowDocsSidebar] = useState(false);
   const [showContactModal, setShowContactModal] = useState(false);
-  const [user, setUser] = useState<{ email: string; full_name?: string } | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [datasets, setDatasets] = useState<Dataset[]>([]);
+  const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load history and user from localStorage on mount
+  // Setup Supabase auth state listener
+  useEffect(() => {
+    // Check current session
+    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        loadDatasets();
+      }
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        loadDatasets();
+      } else {
+        setDatasets([]);
+        setSelectedDataset(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Load persisted app state on mount
+  useEffect(() => {
+    const persistedState = loadAppState();
+    if (persistedState && datasets.length > 0) {
+      // Find the previously selected dataset
+      const dataset = datasets.find(d => d.id === persistedState.selectedDatasetId);
+      if (dataset) {
+        setSelectedDataset(dataset);
+        setColumns(dataset.column_names);
+        setIsUploaded(true);
+      }
+    }
+  }, [datasets]);
+
+  // Save app state whenever it changes
+  useEffect(() => {
+    if (selectedDataset) {
+      saveAppState({
+        selectedDatasetId: selectedDataset.id,
+        columns,
+        isUploaded,
+      });
+    }
+  }, [selectedDataset, columns, isUploaded]);
+
+  // Load history from localStorage
   useEffect(() => {
     const savedHistory = localStorage.getItem("chatHistory");
     if (savedHistory) {
@@ -94,11 +161,6 @@ export default function Home() {
         ...item,
         timestamp: new Date(item.timestamp)
       })));
-    }
-
-    const savedUser = localStorage.getItem("user");
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
     }
   }, []);
 
@@ -109,57 +171,100 @@ export default function Home() {
     }
   }, [history]);
 
+  // Load user's datasets from backend
+  const loadDatasets = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+
+      const response = await fetch(`${API_URL}/datasets`, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setDatasets(data.datasets || []);
+        
+        // Auto-select first dataset if available
+        if (data.datasets && data.datasets.length > 0 && !selectedDataset) {
+          setSelectedDataset(data.datasets[0]);
+          setColumns(data.datasets[0].column_names);
+          setIsUploaded(true);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load datasets:', error);
+    }
+  };
+
   // Handle logout
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
+    setDatasets([]);
+    setSelectedDataset(null);
+    setIsUploaded(false);
   };
 
   // Handle successful authentication
-  const handleAuthSuccess = (token: string, user: any) => {
-    setUser(user);
+  const handleAuthSuccess = () => {
     setShowAuthModal(false);
+    loadDatasets();
   };
 
   // Handle File Upload
   const handleFileUpload = async () => {
     if (!file) return;
+    if (!user) {
+      alert("Please sign in to upload files");
+      return;
+    }
+
     setIsUploading(true);
     setUploadProgress(0);
 
     const formData = new FormData();
-    formData.append("file", file); // Backend expects "file"
+    formData.append("file", file);
 
     const progressInterval = setInterval(() => {
       setUploadProgress((prev) => Math.min(prev + 10, 90));
     }, 100);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
       const response = await fetch(`${API_URL}/upload`, {
         method: "POST",
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
         body: formData,
-        // DO NOT set Content-Type - browser sets it automatically with boundary
       });
 
       clearInterval(progressInterval);
       
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+        const errorData = await response.json().catch(() => ({ detail: "Upload failed" }));
+        throw new Error(errorData.detail || `Upload failed: ${response.status}`);
       }
 
       const data = await response.json();
       setUploadProgress(100);
 
-      if (data.message) {
+      if (data.success) {
         setTimeout(() => {
           setIsUploaded(true);
           setColumns(data.columns);
           setIsUploading(false);
+          
+          // Reload datasets and select the new one
+          loadDatasets();
         }, 500);
       } else {
-        throw new Error(data.error || "Unknown error");
+        throw new Error(data.error || "Upload failed");
       }
     } catch (error) {
       clearInterval(progressInterval);
@@ -195,17 +300,36 @@ export default function Home() {
   // Handle Asking Questions
   const askAI = async () => {
     if (!question.trim()) return;
+    if (!user) {
+      alert("Please sign in to ask questions");
+      return;
+    }
+    if (!selectedDataset) {
+      alert("Please upload a dataset first");
+      return;
+    }
+
     setLoading(true);
     setResult(null);
 
     const currentQuestion = question;
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
       const response = await fetch(`${API_URL}/ask`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: currentQuestion }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          question: currentQuestion,
+          dataset_id: selectedDataset.id,
+        }),
       });
+
       const data: QueryResult = await response.json();
       data.question = currentQuestion;
       setResult(data);
@@ -220,7 +344,10 @@ export default function Home() {
       };
       setHistory((prev) => [historyItem, ...prev]);
     } catch (error) {
-      const errorResult = { question: currentQuestion, answer: "Error connecting to backend. Please ensure the server is running." };
+      const errorResult = {
+        question: currentQuestion,
+        answer: `Error: ${error instanceof Error ? error.message : "Failed to connect to backend"}`,
+      };
       setResult(errorResult);
     } finally {
       setLoading(false);
@@ -303,7 +430,7 @@ export default function Home() {
                 <div className="flex items-center gap-3 px-4 py-2 rounded-lg" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)' }}>
                   <UserIcon className="w-4 h-4" style={{ color: '#713600' }} />
                   <span className="text-sm font-medium" style={{ color: '#713600' }}>
-                    {user.full_name || user.email}
+                    {user.user_metadata?.full_name || user.email}
                   </span>
                 </div>
                 <button 
@@ -350,10 +477,18 @@ export default function Home() {
             <div className="flex items-center gap-3">
               <AlertTriangle className="w-5 h-5 shrink-0" style={{ color: '#C17817' }} />
               <p className="text-sm flex-1" style={{ color: '#8B5A00' }}>
-                <strong>Local Storage:</strong> Files stored at <code className="px-2 py-0.5 rounded" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>./dynamic.db</code>. 
-                For production, consider using cloud storage (AWS S3, Azure Blob).
+                <strong>Development Mode:</strong> Using Supabase cloud storage. 
+                All files are securely stored per user with Row Level Security enabled.
               </p>
-              <button onClick={() => setShowStorageInfo(false)} style={{ color: '#C17817' }} onMouseEnter={(e) => e.currentTarget.style.color = '#8B5A00'} onMouseLeave={(e) => e.currentTarget.style.color = '#C17817'}>
+              <button 
+                onClick={() => { 
+                  setShowStorageInfo(false); 
+                  dismissStorageWarning(); 
+                }} 
+                style={{ color: '#C17817' }} 
+                onMouseEnter={(e) => e.currentTarget.style.color = '#8B5A00'} 
+                onMouseLeave={(e) => e.currentTarget.style.color = '#C17817'}
+              >
                 <X className="w-4 h-4" />
               </button>
             </div>

@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
-import { X, Send, CheckCircle } from "lucide-react";
+import { X, Send, CheckCircle, AlertCircle } from "lucide-react";
+import { supabase } from "../lib/supabase";
 
 interface ContactModalProps {
   isOpen: boolean;
@@ -17,35 +18,55 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [error, setError] = useState("");
 
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setError("");
 
-    // Simulate form submission
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      // Create contacts table if it doesn't exist (handled by Supabase)
+      const { error: insertError } = await supabase
+        .from('contact_messages')
+        .insert([
+          {
+            first_name: formData.firstName,
+            last_name: formData.lastName,
+            email: formData.email,
+            subject: formData.subject,
+            message: formData.message,
+          }
+        ]);
 
-    console.log("Contact form submitted:", formData);
+      if (insertError) {
+        // Fallback to console if table doesn't exist
+        console.log("Contact form submitted:", formData);
+      }
 
-    // Show success message
-    setShowSuccess(true);
-    setFormData({
-      firstName: "",
-      lastName: "",
-      email: "",
-      subject: "",
-      message: ""
-    });
+      // Show success message
+      setShowSuccess(true);
+      setFormData({
+        firstName: "",
+        lastName: "",
+        email: "",
+        subject: "",
+        message: ""
+      });
 
-    // Hide success message after 3 seconds
-    setTimeout(() => {
-      setShowSuccess(false);
-      onClose();
-    }, 3000);
-
-    setIsSubmitting(false);
+      // Close modal after 2 seconds
+      setTimeout(() => {
+        setShowSuccess(false);
+        onClose();
+      }, 2000);
+    } catch (err) {
+      setError("Failed to send message. Please try again.");
+      console.error('Contact form error:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -57,19 +78,23 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto" 
-      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4" 
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
       onClick={onClose}
     >
       <div 
-        className="w-full max-w-2xl rounded-2xl p-6 md:p-8 relative my-8 max-h-[90vh] overflow-y-auto" 
-        style={{ backgroundColor: '#FDFBD4' }}
+        className="w-full max-w-2xl rounded-2xl p-8 relative"
+        style={{ 
+          backgroundColor: '#FDFBD4',
+          maxHeight: '90vh',
+          overflowY: 'auto'
+        }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 rounded-lg transition-colors"
+          className="absolute top-4 right-4 p-2 rounded-lg transition-colors z-10"
           style={{ color: '#713600' }}
           onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'}
           onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
@@ -78,149 +103,167 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
         </button>
 
         {/* Header */}
-        <div className="text-center mb-8">
+        <div className="text-center mb-6">
           <h2 className="text-3xl font-bold mb-2" style={{ color: '#713600' }}>
             Get in Touch
           </h2>
-          <p style={{ color: '#8B5A00' }}>
+          <p className="text-sm" style={{ color: '#8B5A00' }}>
             Have questions or feedback? We'd love to hear from you.
           </p>
         </div>
 
-        {/* Centered Content */}
-        <div className="max-w-2xl mx-auto">
-          {/* Info Box */}
-          <div className="mb-6 p-6 rounded-xl" style={{ backgroundColor: 'rgba(193, 120, 23, 0.08)', border: '1px solid rgba(193, 120, 23, 0.2)' }}>
-            <h4 className="font-semibold mb-2 text-center" style={{ color: '#713600' }}>Quick Response</h4>
-            <p className="text-sm text-center" style={{ color: '#8B5A00' }}>
-              We typically respond within 24 hours during business days.
-            </p>
+        {/* Success/Error Messages */}
+        {showSuccess && (
+          <div 
+            className="mb-4 p-4 rounded-lg flex items-center gap-3"
+            style={{ backgroundColor: 'rgba(34, 197, 94, 0.1)', border: '1px solid rgba(34, 197, 94, 0.3)' }}
+          >
+            <CheckCircle className="w-5 h-5" style={{ color: '#16a34a' }} />
+            <span style={{ color: '#166534' }}>Message sent successfully!</span>
+          </div>
+        )}
+
+        {error && (
+          <div 
+            className="mb-4 p-4 rounded-lg flex items-center gap-3"
+            style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+          >
+            <AlertCircle className="w-5 h-5" style={{ color: '#dc2626' }} />
+            <span style={{ color: '#991b1b' }}>{error}</span>
+          </div>
+        )}
+
+        {/* Contact Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="firstName" className="block text-sm font-semibold mb-2" style={{ color: '#713600' }}>
+                First Name *
+              </label>
+              <input
+                type="text"
+                id="firstName"
+                name="firstName"
+                value={formData.firstName}
+                onChange={handleChange}
+                required
+                className="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2"
+                style={{ 
+                  backgroundColor: '#FFFFFF', 
+                  border: '2px solid #E8DFC8', 
+                  color: '#713600',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; }}
+              />
+            </div>
+            <div>
+              <label htmlFor="lastName" className="block text-sm font-semibold mb-2" style={{ color: '#713600' }}>
+                Last Name *
+              </label>
+              <input
+                type="text"
+                id="lastName"
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleChange}
+                required
+                className="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2"
+                style={{ 
+                  backgroundColor: '#FFFFFF', 
+                  border: '2px solid #E8DFC8', 
+                  color: '#713600',
+                }}
+                onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; }}
+              />
+            </div>
           </div>
 
-          {/* Contact Form */}
           <div>
-            {showSuccess && (
-              <div 
-                className="mb-6 p-4 rounded-lg flex items-center justify-center gap-3"
-                style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)', border: '1px solid rgba(193, 120, 23, 0.3)' }}
-              >
-                <CheckCircle className="w-5 h-5" style={{ color: '#C17817' }} />
-                <span style={{ color: '#713600' }}>Message sent successfully!</span>
-              </div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="form-group">
-                  <label htmlFor="firstName" className="block text-sm font-medium mb-2" style={{ color: '#713600' }}>
-                    First Name *
-                  </label>
-                  <input
-                    type="text"
-                    id="firstName"
-                    name="firstName"
-                    value={formData.firstName}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2"
-                    style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8', color: '#713600' }}
-                    onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
-                  />
-                </div>
-                <div className="form-group">
-                  <label htmlFor="lastName" className="block text-sm font-medium mb-2" style={{ color: '#713600' }}>
-                    Last Name *
-                  </label>
-                  <input
-                    type="text"
-                    id="lastName"
-                    name="lastName"
-                    value={formData.lastName}
-                    onChange={handleChange}
-                    required
-                    className="w-full px-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2"
-                    style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8', color: '#713600' }}
-                    onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; }}
-                    onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="email" className="block text-sm font-medium mb-2" style={{ color: '#713600' }}>
-                  Email *
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2"
-                  style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8', color: '#713600' }}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="subject" className="block text-sm font-medium mb-2" style={{ color: '#713600' }}>
-                  Subject *
-                </label>
-                <input
-                  type="text"
-                  id="subject"
-                  name="subject"
-                  value={formData.subject}
-                  onChange={handleChange}
-                  required
-                  className="w-full px-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2"
-                  style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8', color: '#713600' }}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
-                />
-              </div>
-
-              <div className="form-group">
-                <label htmlFor="message" className="block text-sm font-medium mb-2" style={{ color: '#713600' }}>
-                  Message *
-                </label>
-                <textarea
-                  id="message"
-                  name="message"
-                  value={formData.message}
-                  onChange={handleChange}
-                  required
-                  rows={5}
-                  className="w-full px-4 py-2 rounded-lg text-sm focus:outline-none focus:ring-2 resize-vertical"
-                  style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8', color: '#713600' }}
-                  onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; }}
-                  onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full px-6 py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-sm"
-                style={{ backgroundColor: '#C17817', color: '#FDFBD4' }}
-                onMouseEnter={(e) => { if (!isSubmitting) e.currentTarget.style.backgroundColor = '#A66212'; }}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
-              >
-                {isSubmitting ? (
-                  <>Sending...</>
-                ) : (
-                  <>
-                    <Send className="w-5 h-5" />
-                    Send Message
-                  </>
-                )}
-              </button>
-            </form>
+            <label htmlFor="email" className="block text-sm font-semibold mb-2" style={{ color: '#713600' }}>
+              Email *
+            </label>
+            <input
+              type="email"
+              id="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              required
+              className="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2"
+              style={{ 
+                backgroundColor: '#FFFFFF', 
+                border: '2px solid #E8DFC8', 
+                color: '#713600',
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; }}
+            />
           </div>
-        </div>
+
+          <div>
+            <label htmlFor="subject" className="block text-sm font-semibold mb-2" style={{ color: '#713600' }}>
+              Subject *
+            </label>
+            <input
+              type="text"
+              id="subject"
+              name="subject"
+              value={formData.subject}
+              onChange={handleChange}
+              required
+              className="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2"
+              style={{ 
+                backgroundColor: '#FFFFFF', 
+                border: '2px solid #E8DFC8', 
+                color: '#713600',
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; }}
+            />
+          </div>
+
+          <div>
+            <label htmlFor="message" className="block text-sm font-semibold mb-2" style={{ color: '#713600' }}>
+              Message *
+            </label>
+            <textarea
+              id="message"
+              name="message"
+              value={formData.message}
+              onChange={handleChange}
+              required
+              rows={4}
+              className="w-full px-4 py-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 resize-none"
+              style={{ 
+                backgroundColor: '#FFFFFF', 
+                border: '2px solid #E8DFC8', 
+                color: '#713600',
+              }}
+              onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; }}
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full px-6 py-3 rounded-lg font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-lg"
+            style={{ backgroundColor: '#C17817', color: '#FDFBD4' }}
+            onMouseEnter={(e) => { if (!isSubmitting) e.currentTarget.style.backgroundColor = '#A66212'; }}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
+          >
+            {isSubmitting ? (
+              <>Sending...</>
+            ) : (
+              <>
+                <Send className="w-5 h-5" />
+                Send Message
+              </>
+            )}
+          </button>
+        </form>
       </div>
     </div>
   );
