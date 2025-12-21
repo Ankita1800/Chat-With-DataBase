@@ -396,23 +396,23 @@ export default function Home() {
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#FDFBD4' }}>
       {/* Sticky Header */}
       <header className="sticky top-0 z-50 shadow-sm" style={{ backgroundColor: '#FDFBD4', borderBottom: '1px solid #E8DFC8' }}>
-        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
           {/* Logo & Nav Toggle */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 rounded-lg transition-colors"
+              className="p-1.5 sm:p-2 rounded-lg transition-colors"
               style={{ backgroundColor: 'transparent' }}
               onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'}
               onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
             >
               <Menu className="w-5 h-5" style={{ color: '#713600' }} />
             </button>
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#C17817' }}>
-                <Database className="w-5 h-5" style={{ color: '#FDFBD4' }} />
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#C17817' }}>
+                <Database className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#FDFBD4' }} />
               </div>
-              <span className="text-xl font-bold" style={{ color: '#713600' }}>ChatWithDB</span>
+              <span className="text-lg sm:text-xl font-bold" style={{ color: '#713600' }}>ChatWithDB</span>
             </div>
           </div>
 
@@ -424,10 +424,10 @@ export default function Home() {
           </nav>
 
           {/* Action Buttons */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             {user ? (
               <>
-                <div className="flex items-center gap-3 px-4 py-2 rounded-lg" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)' }}>
+                <div className="hidden sm:flex items-center gap-3 px-4 py-2 rounded-lg" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)' }}>
                   <UserIcon className="w-4 h-4" style={{ color: '#713600' }} />
                   <span className="text-sm font-medium" style={{ color: '#713600' }}>
                     {user.user_metadata?.full_name || user.email}
@@ -435,13 +435,13 @@ export default function Home() {
                 </div>
                 <button 
                   onClick={handleLogout}
-                  className="px-4 py-2 rounded-lg text-sm font-medium transition-all shadow-sm flex items-center gap-2" 
+                  className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium transition-all shadow-sm flex items-center gap-1.5 sm:gap-2" 
                   style={{ backgroundColor: '#C17817', color: '#FDFBD4' }} 
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'} 
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
                 >
-                  <LogOut className="w-4 h-4" />
-                  Logout
+                  <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Logout</span>
                 </button>
               </>
             ) : (
@@ -675,16 +675,17 @@ export default function Home() {
         <main className="flex-1 overflow-y-auto">
           {!isUploaded ? (
             /* Hero Section & Upload */
-            <div className="max-w-4xl mx-auto px-6 py-16">
+            <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
               {/* Hero */}
-              <div className="text-center mb-12">
-                <h1 className="text-5xl font-bold mb-4" style={{ color: '#713600' }}>
-                  Chat with Your Database<br />using AI
+              <div className="text-center mb-8 sm:mb-12">
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-3 sm:mb-4 leading-tight" style={{ color: '#713600' }}>
+                  Chat with Your Database<br className="hidden sm:block" />
+                  <span className="sm:hidden"> </span>using AI
                 </h1>
-                <p className="text-xl mb-2" style={{ color: '#8B5A00' }}>
+                <p className="text-lg sm:text-xl mb-2" style={{ color: '#8B5A00' }}>
                   The best <span className="font-semibold" style={{ color: '#C17817' }}>AI</span> for your CSV data
                 </p>
-                <p className="max-w-2xl mx-auto" style={{ color: '#A66212' }}>
+                <p className="max-w-2xl mx-auto text-sm sm:text-base" style={{ color: '#A66212' }}>
                   No SQL knowledge required. Upload your CSV file and chat with your data naturally. Get instant insights powered by AI.
                 </p>
               </div>
@@ -696,7 +697,7 @@ export default function Home() {
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  className="upload-area border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all"
+                  className="upload-area border-2 border-dashed rounded-xl p-6 sm:p-8 lg:p-12 text-center cursor-pointer transition-all"
                   style={{
                     borderColor: isDragOver ? '#C17817' : '#E8DFC8',
                     backgroundColor: isDragOver ? 'rgba(193, 120, 23, 0.05)' : 'rgba(248, 244, 230, 0.5)'
@@ -714,23 +715,23 @@ export default function Home() {
 
                   {file ? (
                     <div className="fade-in">
-                      <div className="w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
-                        <CheckCircle className="w-8 h-8" style={{ color: '#C17817' }} />
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center mx-auto mb-3 sm:mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                        <CheckCircle className="w-6 h-6 sm:w-8 sm:h-8" style={{ color: '#C17817' }} />
                       </div>
-                      <p className="text-lg font-semibold" style={{ color: '#713600' }}>{file.name}</p>
-                      <p className="mt-1" style={{ color: '#8B5A00' }}>
+                      <p className="text-base sm:text-lg font-semibold break-all px-2" style={{ color: '#713600' }}>{file.name}</p>
+                      <p className="mt-1 text-sm sm:text-base" style={{ color: '#8B5A00' }}>
                         {(file.size / 1024).toFixed(2)} KB • Ready to upload
                       </p>
                     </div>
                   ) : (
                     <>
-                      <div className="w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)' }}>
-                        <FileUp className="w-8 h-8" style={{ color: '#C17817' }} />
+                      <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl flex items-center justify-center mx-auto mb-3 sm:mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)' }}>
+                        <FileUp className="w-6 h-6 sm:w-8 sm:h-8" style={{ color: '#C17817' }} />
                       </div>
-                      <p className="text-lg font-semibold mb-2" style={{ color: '#713600' }}>
+                      <p className="text-base sm:text-lg font-semibold mb-2" style={{ color: '#713600' }}>
                         Drop your CSV file here
                       </p>
-                      <p style={{ color: '#8B5A00' }}>or click to browse from your computer</p>
+                      <p className="text-sm sm:text-base" style={{ color: '#8B5A00' }}>or click to browse from your computer</p>
                     </>
                   )}
                 </div>
@@ -755,36 +756,37 @@ export default function Home() {
                 {file && !isUploading && (
                   <button
                     onClick={handleFileUpload}
-                    className="w-full mt-6 py-4 rounded-xl font-semibold text-lg flex items-center justify-center gap-3 transition-all shadow-sm"
+                    className="w-full mt-4 sm:mt-6 py-3 sm:py-4 rounded-xl font-semibold text-base sm:text-lg flex items-center justify-center gap-2 sm:gap-3 transition-all shadow-sm"
                     style={{ backgroundColor: '#C17817', color: '#FDFBD4' }}
                     onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#A66212'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(113, 54, 0, 0.1), 0 2px 4px -1px rgba(113, 54, 0, 0.06)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = '#C17817'; e.currentTarget.style.boxShadow = '0 1px 2px 0 rgba(113, 54, 0, 0.05)'; }}
                   >
-                    <Sparkles className="w-5 h-5" />
-                    Start Analyzing Your Data
-                    <ArrowRight className="w-5 h-5" />
+                    <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
+                    <span className="hidden sm:inline">Start Analyzing Your Data</span>
+                    <span className="sm:hidden">Analyze Data</span>
+                    <ArrowRight className="w-4 h-4 sm:w-5 sm:h-5" />
                   </button>
                 )}
               </div>
             </div>
           ) : (
             /* Chat Interface */
-            <div className="max-w-5xl mx-auto px-6 py-8">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
               {/* Database Info */}
-              <div className="rounded-xl p-6 mb-6" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }}>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
-                      <Database className="w-6 h-6" style={{ color: '#C17817' }} />
+              <div className="rounded-xl p-4 sm:p-6 mb-4 sm:mb-6" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }}>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+                  <div className="flex items-center gap-3 sm:gap-4 flex-1">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                      <Database className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: '#C17817' }} />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full animate-pulse" style={{ backgroundColor: '#C17817' }} />
-                        <h3 className="text-lg font-semibold" style={{ color: '#713600' }}>Database Connected</h3>
+                        <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0" style={{ backgroundColor: '#C17817' }} />
+                        <h3 className="text-base sm:text-lg font-semibold" style={{ color: '#713600' }}>Database Connected</h3>
                       </div>
-                      <p className="text-sm mt-1" style={{ color: '#8B5A00' }}>
-                        {columns.length} columns available: {columns.slice(0, 5).join(", ")}
-                        {columns.length > 5 && "..."}
+                      <p className="text-xs sm:text-sm mt-1 truncate" style={{ color: '#8B5A00' }}>
+                        {columns.length} columns: {columns.slice(0, 3).join(", ")}
+                        {columns.length > 3 && "..."}
                       </p>
                     </div>
                   </div>
@@ -794,28 +796,28 @@ export default function Home() {
                       setFile(null);
                       setResult(null);
                     }}
-                    className="px-4 py-2 text-sm rounded-lg transition-colors"
+                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition-colors flex-shrink-0"
                     style={{ color: '#8B5A00', backgroundColor: 'transparent' }}
                     onMouseEnter={(e) => { e.currentTarget.style.color = '#713600'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'; }}
                     onMouseLeave={(e) => { e.currentTarget.style.color = '#8B5A00'; e.currentTarget.style.backgroundColor = 'transparent'; }}
                   >
-                    Change File
+                    Change
                   </button>
                 </div>
               </div>
 
               {/* Query Input */}
-              <div className="rounded-xl p-6 mb-6 shadow-sm" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }}>
-                <div className="flex gap-4">
+              <div className="rounded-xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-sm" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }}>
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                   <div className="flex-1 relative">
-                    <Bot className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: '#C17817' }} />
+                    <Bot className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#C17817' }} />
                     <input
                       type="text"
                       value={question}
                       onChange={(e) => setQuestion(e.target.value)}
                       onKeyDown={(e) => e.key === "Enter" && !loading && askAI()}
-                      placeholder="Ask anything about your data... (e.g., 'What are the top 5 products by revenue?')"
-                      className="w-full pl-12 pr-4 py-4 rounded-xl text-base focus:outline-none focus:ring-2"
+                      placeholder="Ask about your data..."
+                      className="w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-3 sm:py-4 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2"
                       style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8', color: '#713600' }}
                       onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; }}
                       onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
@@ -824,17 +826,17 @@ export default function Home() {
                   <button
                     onClick={askAI}
                     disabled={loading || !question.trim()}
-                    className="px-6 py-4 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 transition-all shadow-sm"
+                    className="px-4 sm:px-6 py-3 sm:py-4 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-sm w-full sm:w-auto"
                     style={{ backgroundColor: '#C17817', color: '#FDFBD4' }}
                     onMouseEnter={(e) => { if (!loading && question.trim()) e.currentTarget.style.backgroundColor = '#A66212'; }}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
                   >
                     {loading ? (
-                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
                     ) : (
                       <>
-                        <Send className="w-5 h-5" />
-                        Ask AI
+                        <Send className="w-4 h-4 sm:w-5 sm:h-5" />
+                        <span>Ask AI</span>
                       </>
                     )}
                   </button>
