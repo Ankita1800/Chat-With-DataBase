@@ -1,5 +1,15 @@
 # Production Deployment Setup Guide
 
+## 🌐 Live URLs
+
+**Frontend (User Interface):**
+- https://chat-with-data-base-ee6u.vercel.app
+
+**Backend (API Server):**
+- https://chat-with-database-7.onrender.com
+- Health Check: https://chat-with-database-7.onrender.com/healthz
+- API Docs: https://chat-with-database-7.onrender.com/docs
+
 ## ✅ Current Status
 
 - ✅ Backend deployed: https://chat-with-database-7.onrender.com
