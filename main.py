@@ -73,22 +73,11 @@ except Exception as e:
 # 2. Setup the App
 app = FastAPI(title="Chat with Database API - Supabase Edition")
 
-# Enable CORS with specific origins for production security
-# Reference: https://fastapi.tiangolo.com/tutorial/cors/
-# TODO: Replace with your actual frontend domain in production
-ALLOWED_ORIGINS = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-    # Add your production domain here: "https://yourdomain.com"
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,  # Specific origins only, no wildcards in production
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -131,7 +120,7 @@ async def health_check():
 # ============ AUTHENTICATION IS NOW HANDLED BY FRONTEND ============
 # All auth endpoints removed - Supabase Auth handles:
 # - Email/password signup & login
-# - OAuth (Google, GitHub, etc.)
+# - OAuth (Google)
 # - Session management
 # - Token refresh
 # 
