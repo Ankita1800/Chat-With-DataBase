@@ -99,8 +99,12 @@ async def root():
         "docs": "/docs"
     }
 
+@app.get("/healthz")
+def health_check():
+    return {"status": "ok"}
+
 @app.get("/health")
-async def health_check():
+async def health_check_detailed():
     """Health check endpoint for monitoring"""
     try:
         # Test database connection
