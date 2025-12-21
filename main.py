@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_groq import ChatGroq
 from langchain_community.utilities import SQLDatabase
-from langchain_classic.chains import create_sql_query_chain
+from langchain.chains import create_sql_query_chain
 from sqlalchemy import create_engine, text, MetaData, Table, Column, Integer, String, Float, inspect
 from sqlalchemy.exc import SQLAlchemyError
 
