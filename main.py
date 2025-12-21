@@ -34,83 +34,41 @@ if not SUPABASE_URL_BASE:
     raise ValueError("SUPABASE_URL must be set in environment variables")
 
 # Database Connection Configuration
-# Priority: Use DATABASE_URL from env if available, otherwise construct it
-DATABASE_URL_ENV = os.getenv("DATABASE_URL")
+# Require DATABASE_URL - fail fast if not set or invalid
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL_ENV:
-    print("[INFO] Using DATABASE_URL from environment variable")
-    DATABASE_URL = DATABASE_URL_ENV
-    db_engine = create_engine(
-        DATABASE_URL,
-        pool_pre_ping=True,
-        pool_recycle=3600,
-        connect_args={"connect_timeout": 10}
+if not DATABASE_URL:
+    raise ValueError(
+        "DATABASE_URL must be set in .env file.\n"
+        "Example: postgresql://postgres.<PROJECT_REF>:<PASSWORD>@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
     )
+
+print("[INFO] Using DATABASE_URL from environment variable")
+
+# Create database engine
+db_engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    connect_args={"connect_timeout": 10}
+)
+
+# Test connection - fail fast if it doesn't work
+try:
+    with db_engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
     
-    # Test connection (non-blocking - continue even if it fails)
-    try:
-        with db_engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        
-        # Parse and log connection info
-        from urllib.parse import urlparse
-        parsed = urlparse(DATABASE_URL)
-        print(f"[SUCCESS] Connected to: {parsed.hostname}:{parsed.port}")
-    except Exception as e:
-        print(f"[WARNING] Database connection test failed: {type(e).__name__}")
-        print(f"[DETAIL] {str(e)}")
-        print("[INFO] Server will start anyway - database operations will fail until connection is restored")
-else:
-    # Fallback: Construct from components
-    SUPABASE_DB_PASSWORD = os.getenv("SUPABASE_DB_PASSWORD")
-    if not SUPABASE_DB_PASSWORD:
-        raise ValueError("Either DATABASE_URL or SUPABASE_DB_PASSWORD must be set")
-    
-    project_ref = SUPABASE_URL_BASE.replace("https://", "").replace("http://", "").split(".")[0]
-    encoded_password = quote_plus(SUPABASE_DB_PASSWORD)
-    
-    DATABASE_URLS = [
-        f"postgresql://postgres.{project_ref}:{encoded_password}@aws-0-ap-south-1.pooler.supabase.com:5432/postgres",
-        f"postgresql://postgres.{project_ref}:{encoded_password}@aws-0-ap-south-1.pooler.supabase.com:6543/postgres",
-        f"postgresql://postgres:{encoded_password}@db.{project_ref}.supabase.co:5432/postgres",
-    ]
-    
-    print(f"[INFO] Testing {len(DATABASE_URLS)} connection formats...")
-    
-    DATABASE_URL = None
-    db_engine = None
-    
-    for idx, url in enumerate(DATABASE_URLS, 1):
-        parsed_host = url.split("@")[1].split("/")[0] if "@" in url else "unknown"
-        print(f"[TEST {idx}] Host: {parsed_host}")
-        
-        try:
-            test_engine = create_engine(
-                url,
-                pool_pre_ping=True,
-                pool_recycle=3600,
-                connect_args={"connect_timeout": 5}
-            )
-            
-            with test_engine.connect() as conn:
-                conn.execute(text("SELECT 1"))
-                
-            print(f"[SUCCESS] Connected using format {idx}: {parsed_host}")
-            DATABASE_URL = url
-            db_engine = test_engine
-            break
-        except Exception as e:
-            print(f"[FAILED {idx}] {type(e).__name__}: {str(e)[:80]}")
-            continue
-    
-    if not DATABASE_URL:
-        print("\n" + "="*80)
-        print("[CRITICAL] All connection attempts failed")
-        print("="*80)
-        print("Add DATABASE_URL to .env with the correct connection string")
-        print("="*80 + "\n")
-        DATABASE_URL = DATABASE_URLS[2]
-        db_engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+    # Parse and log connection info
+    from urllib.parse import urlparse
+    parsed = urlparse(DATABASE_URL)
+    print(f"[SUCCESS] Connected to: {parsed.hostname}:{parsed.port}")
+except Exception as e:
+    print(f"[CRITICAL] Database connection failed: {type(e).__name__}")
+    print(f"[DETAIL] {str(e)}")
+    raise RuntimeError(
+        f"Cannot connect to database. Check your DATABASE_URL in .env file.\n"
+        f"Error: {str(e)}"
+    )
 
 # 2. Setup the App
 app = FastAPI(title="Chat with Database API - Supabase Edition")
