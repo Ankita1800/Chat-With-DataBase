@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import { X, Mail, Lock, User, Github } from "lucide-react";
+import { X, Mail, Lock, User } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 interface AuthModalProps {
@@ -107,27 +107,7 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode = "s
     }
   };
 
-  const handleGithubAuth = async () => {
-    try {
-      setLoading(true);
-      setError("");
-      
-      // Sign in with GitHub using Supabase
-      // Reference: https://supabase.com/docs/guides/auth/social-login/auth-github
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'github',
-        options: {
-          redirectTo: `${window.location.origin}/`,
-        },
-      });
 
-      if (error) throw error;
-      // User will be redirected to GitHub for authentication
-    } catch (err: any) {
-      setError(err.message || "GitHub authentication failed");
-      setLoading(false);
-    }
-  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
@@ -176,17 +156,6 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode = "s
                   <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
                 </svg>
                 Continue with Google
-              </button>
-
-              <button
-                onClick={handleGithubAuth}
-                className="w-full flex items-center justify-center gap-3 px-4 py-3 rounded-lg font-medium transition-all"
-                style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8', color: '#713600' }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#F8F4E6'; }}
-              >
-                <Github className="w-5 h-5" />
-                Continue with GitHub
               </button>
             </div>
 
