@@ -44,7 +44,7 @@ if not DATABASE_URL:
     )
 
 print("[INFO] Using DATABASE_URL from environment variable")
-
+# okay to use as is
 # Create database engine
 db_engine = create_engine(
     DATABASE_URL,
