@@ -496,15 +496,39 @@ export default function Home() {
         </div>
       )}
 
-      <div className="flex flex-1">
+      <div className="flex flex-1 relative">
+        {/* Mobile Sidebar Overlay */}
+        {sidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
+
         {/* Collapsible Sidebar */}
         <aside
           className={`${
-            sidebarOpen ? "w-80" : "w-0"
-          } transition-all duration-300 overflow-hidden flex flex-col`}
-          style={{ backgroundColor: '#F8F4E6', borderRight: '1px solid #E8DFC8' }}
+            sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
+          } ${
+            sidebarOpen ? "w-80" : "w-80 lg:w-0"
+          } fixed lg:relative inset-y-0 left-0 z-50 lg:z-auto transition-all duration-300 flex flex-col overflow-hidden`}
+          style={{ backgroundColor: '#F8F4E6', borderRight: '1px solid #E8DFC8', top: '64px' }}
         >
           <div className="p-6 flex-1 overflow-y-auto">
+            {/* Close button for mobile */}
+            <div className="flex items-center justify-between mb-4 lg:hidden">
+              <span className="text-sm font-semibold" style={{ color: '#713600' }}>Menu</span>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="p-2 rounded-lg transition-colors"
+                style={{ backgroundColor: 'transparent' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+              >
+                <X className="w-5 h-5" style={{ color: '#713600' }} />
+              </button>
+            </div>
+
             {/* Database Connections */}
             <div className="mb-6">
               <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#8B5A00' }}>
