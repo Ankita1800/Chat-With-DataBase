@@ -172,7 +172,7 @@ export default function Home() {
   }, [history]);
 
   // Load user's datasets from backend
-  const loadDatasets = async () => {
+  const loadDatasets = async (selectDatasetId?: string) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
@@ -185,13 +185,17 @@ export default function Home() {
 
       if (response.ok) {
         const data = await response.json();
-        setDatasets(data.datasets || []);
+        const fetchedDatasets = data.datasets || [];
+        setDatasets(fetchedDatasets);
         
-        // Auto-select first dataset if available
-        if (data.datasets && data.datasets.length > 0 && !selectedDataset) {
-          setSelectedDataset(data.datasets[0]);
-          setColumns(data.datasets[0].column_names);
-          setIsUploaded(true);
+        // If selectDatasetId is provided, select that dataset
+        if (selectDatasetId && fetchedDatasets.length > 0) {
+          const datasetToSelect = fetchedDatasets.find((d: Dataset) => d.id === selectDatasetId);
+          if (datasetToSelect) {
+            setSelectedDataset(datasetToSelect);
+            setColumns(datasetToSelect.column_names);
+            setIsUploaded(true);
+          }
         }
       }
     } catch (error) {
@@ -255,13 +259,16 @@ export default function Home() {
       setUploadProgress(100);
 
       if (data.success) {
-        setTimeout(() => {
-          setIsUploaded(true);
-          setColumns(data.columns);
+        const newDatasetId = data.dataset_id;
+        
+        setTimeout(async () => {
           setIsUploading(false);
+          setUploadProgress(100);
           
-          // Reload datasets and select the new one
-          loadDatasets();
+          // Reload datasets and automatically select the newly uploaded one
+          await loadDatasets(newDatasetId);
+          
+          setFile(null); // Clear file input for next upload
         }, 500);
       } else {
         throw new Error(data.error || "Upload failed");
@@ -529,31 +536,80 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Database Connections */}
+            {/* Database Connections / Datasets */}
             <div className="mb-6">
-              <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#8B5A00' }}>
-                Database Connections
-              </h3>
-              {isUploaded ? (
-                <div className="p-3 rounded-lg" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }}>
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
-                      <Database className="w-5 h-5" style={{ color: '#C17817' }} />
-                    </div>
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#C17817' }} />
-                        <span className="text-sm font-medium" style={{ color: '#713600' }}>Connected</span>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wider" style={{ color: '#8B5A00' }}>
+                  Your Datasets
+                </h3>
+                {user && (
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-1.5 rounded-lg transition-colors"
+                    style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)', color: '#C17817' }}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.2)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'}
+                    title="Upload new dataset"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              
+              {datasets.length > 0 ? (
+                <div className="space-y-2">
+                  {datasets.map((dataset) => (
+                    <button
+                      key={dataset.id}
+                      onClick={() => {
+                        setSelectedDataset(dataset);
+                        setColumns(dataset.column_names);
+                        setIsUploaded(true);
+                      }}
+                      className={`w-full p-3 rounded-lg transition-all text-left ${
+                        selectedDataset?.id === dataset.id ? 'ring-2' : ''
+                      }`}
+                      style={{
+                        backgroundColor: selectedDataset?.id === dataset.id ? '#FDFBD4' : '#F8F4E6',
+                        border: '1px solid #E8DFC8',
+                        ringColor: '#C17817',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedDataset?.id !== dataset.id) {
+                          e.currentTarget.style.borderColor = '#C17817';
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (selectedDataset?.id !== dataset.id) {
+                          e.currentTarget.style.borderColor = '#E8DFC8';
+                        }
+                      }}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          selectedDataset?.id === dataset.id ? 'ring-2' : ''
+                        }`} style={{ 
+                          backgroundColor: 'rgba(193, 120, 23, 0.15)',
+                          ringColor: '#C17817'
+                        }}>
+                          <Database className="w-5 h-5" style={{ color: '#C17817' }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            {selectedDataset?.id === dataset.id && (
+                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#C17817' }} />
+                            )}
+                            <span className="text-sm font-medium truncate" style={{ color: '#713600' }}>
+                              {dataset.dataset_name}
+                            </span>
+                          </div>
+                          <p className="text-xs truncate" style={{ color: '#8B5A00' }}>
+                            {dataset.row_count} rows • {dataset.column_names.length} columns
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {columns.map((col) => (
-                      <span key={col} className="px-2 py-1 rounded text-xs font-medium" style={{ backgroundColor: '#F8F4E6', color: '#713600', border: '1px solid #E8DFC8' }}>
-                        {col}
-                      </span>
-                    ))}
-                  </div>
+                    </button>
+                  ))}
                 </div>
               ) : (
                 <button
@@ -564,8 +620,22 @@ export default function Home() {
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#8B5A00'; }}
                 >
                   <Plus className="w-4 h-4" />
-                  <span className="text-sm font-medium">Add Database</span>
+                  <span>Upload Your First Dataset</span>
                 </button>
+              )}
+              
+              {/* Show selected dataset columns */}
+              {selectedDataset && (
+                <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }}>
+                  <p className="text-xs font-semibold mb-2" style={{ color: '#8B5A00' }}>COLUMNS:</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {selectedDataset.column_names.map((col) => (
+                      <span key={col} className="px-2 py-1 rounded text-xs font-medium" style={{ backgroundColor: '#F8F4E6', color: '#713600', border: '1px solid #E8DFC8' }}>
+                        {col}
+                      </span>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -673,7 +743,7 @@ export default function Home() {
 
         {/* Main Content */}
         <main className="flex-1 overflow-y-auto">
-          {!isUploaded ? (
+          {!isUploaded || datasets.length === 0 ? (
             /* Hero Section & Upload */
             <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 sm:py-12 lg:py-16">
               {/* Hero */}
@@ -782,27 +852,28 @@ export default function Home() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0" style={{ backgroundColor: '#C17817' }} />
-                        <h3 className="text-base sm:text-lg font-semibold" style={{ color: '#713600' }}>Database Connected</h3>
+                        <h3 className="text-base sm:text-lg font-semibold truncate" style={{ color: '#713600' }}>
+                          {selectedDataset ? selectedDataset.dataset_name : 'Database Connected'}
+                        </h3>
                       </div>
                       <p className="text-xs sm:text-sm mt-1 truncate" style={{ color: '#8B5A00' }}>
+                        {selectedDataset ? `${selectedDataset.row_count} rows • ` : ''}
                         {columns.length} columns: {columns.slice(0, 3).join(", ")}
                         {columns.length > 3 && "..."}
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => {
-                      setIsUploaded(false);
-                      setFile(null);
-                      setResult(null);
-                    }}
-                    className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition-colors flex-shrink-0"
-                    style={{ color: '#8B5A00', backgroundColor: 'transparent' }}
-                    onMouseEnter={(e) => { e.currentTarget.style.color = '#713600'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.color = '#8B5A00'; e.currentTarget.style.backgroundColor = 'transparent'; }}
-                  >
-                    Change
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition-colors flex-shrink-0 font-medium"
+                      style={{ color: '#FDFBD4', backgroundColor: '#C17817' }}
+                      onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
+                    >
+                      + Upload New
+                    </button>
+                  </div>
                 </div>
               </div>
 

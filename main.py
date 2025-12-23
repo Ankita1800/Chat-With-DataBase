@@ -296,11 +296,28 @@ async def upload_file(
             )
         
         # Store metadata in user_datasets table
+        # Check if dataset name already exists and make it unique
+        base_name = file.filename.rsplit('.', 1)[0]
+        dataset_name = base_name
+        
+        # Check for duplicates and add timestamp if needed
+        existing_check = supabase.table("user_datasets")\
+            .select("dataset_name")\
+            .eq("user_id", current_user.id)\
+            .eq("dataset_name", dataset_name)\
+            .execute()
+        
+        if existing_check.data and len(existing_check.data) > 0:
+            # Add timestamp to make it unique
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            dataset_name = f"{base_name}_{timestamp}"
+        
         try:
             supabase.table("user_datasets").insert({
                 "id": dataset_id,
                 "user_id": current_user.id,
-                "dataset_name": file.filename.rsplit('.', 1)[0],
+                "dataset_name": dataset_name,
                 "original_filename": file.filename,
                 "storage_path": storage_path,
                 "table_name": table_name,
@@ -326,7 +343,7 @@ async def upload_file(
             "success": True,
             "message": "Dataset uploaded successfully!",
             "dataset_id": dataset_id,
-            "dataset_name": file.filename.rsplit('.', 1)[0],
+            "dataset_name": dataset_name,
             "table_name": table_name,
             "columns": list(df.columns),
             "row_count": len(df),
