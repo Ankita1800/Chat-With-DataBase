@@ -440,10 +440,9 @@ async def ask_database(
         # Create SQL chain restricted to user's table
         chain, db = get_user_db_chain(current_user.id, table_name)
         
-        # Generate SQL with context
+        # Generate SQL with context (WITHOUT user_id mention for clean display)
         query_input = {
             "question": f"Table name is {table_name}. Available columns: {', '.join(available_columns)}. "
-                       f"IMPORTANT: Add WHERE user_id = '{current_user.id}' to all queries to filter by user. "
                        f"Question: {request.question}"
         }
         generated_sql = chain.invoke(query_input)
@@ -453,36 +452,37 @@ async def ask_database(
         match = re.search(sql_pattern, generated_sql, re.IGNORECASE | re.DOTALL)
         
         if match:
-            clean_sql = match.group(1).strip()
-            if clean_sql.endswith(';'):
-                clean_sql = clean_sql[:-1]
+            display_sql = match.group(1).strip()
+            if display_sql.endswith(';'):
+                display_sql = display_sql[:-1]
         else:
-            clean_sql = generated_sql.strip()
+            display_sql = generated_sql.strip()
         
-        # Enforce user_id filter in SQL if not present (safety check)
-        if f"user_id = '{current_user.id}'" not in clean_sql.lower():
+        # Create execution SQL with user_id filter for security (not shown to user)
+        execution_sql = display_sql
+        if f"user_id = '{current_user.id}'" not in execution_sql.lower():
             # Add WHERE clause or append to existing one
-            if "WHERE" in clean_sql.upper():
-                clean_sql = clean_sql.replace("WHERE", f"WHERE user_id = '{current_user.id}' AND", 1)
+            if "WHERE" in execution_sql.upper():
+                execution_sql = execution_sql.replace("WHERE", f"WHERE user_id = '{current_user.id}' AND", 1)
             else:
                 # Add WHERE before ORDER BY, GROUP BY, or at the end
                 for keyword in ["ORDER BY", "GROUP BY", "LIMIT"]:
-                    if keyword in clean_sql.upper():
-                        clean_sql = clean_sql.replace(keyword, f"WHERE user_id = '{current_user.id}' {keyword}", 1)
+                    if keyword in execution_sql.upper():
+                        execution_sql = execution_sql.replace(keyword, f"WHERE user_id = '{current_user.id}' {keyword}", 1)
                         break
                 else:
-                    clean_sql += f" WHERE user_id = '{current_user.id}'"
+                    execution_sql += f" WHERE user_id = '{current_user.id}'"
         
-        # Execute SQL
+        # Execute SQL with user_id filter
         try:
-            result = db.run(clean_sql)
+            result = db.run(execution_sql)
         except Exception as sql_error:
-            # Log query to history with error
+            # Log query to history with error (log the display version)
             supabase.table("query_history").insert({
                 "user_id": current_user.id,
                 "dataset_id": request.dataset_id,
                 "question": request.question,
-                "generated_sql": clean_sql,
+                "generated_sql": display_sql,
                 "success": False,
                 "error_message": str(sql_error),
                 "execution_time_ms": int((time.time() - start_time) * 1000)
@@ -499,13 +499,13 @@ async def ask_database(
         # Determine success status
         success = result and result.strip() and result != "[]"
         
-        # Store query in history
+        # Store query in history (store display version without user_id)
         try:
             supabase.table("query_history").insert({
                 "user_id": current_user.id,
                 "dataset_id": request.dataset_id,
                 "question": request.question,
-                "generated_sql": clean_sql,
+                "generated_sql": display_sql,
                 "result_data": {"raw": result} if success else None,
                 "success": success,
                 "confidence_score": confidence_data["score"],
@@ -521,7 +521,7 @@ async def ask_database(
                 "status": "no_data",
                 "message": "No matching records found for your query.",
                 "question": request.question,
-                "generated_sql": clean_sql,
+                "generated_sql": display_sql,
                 "answer": "No data found. The query returned no results.",
                 "data_found": False,
                 "confidence": 0.0
@@ -531,7 +531,7 @@ async def ask_database(
         if not confidence_data["is_reliable"]:
             return {
                 "question": request.question,
-                "generated_sql": clean_sql,
+                "generated_sql": display_sql,
                 "answer": f"Low confidence result: {result}\n\nNote: This response may not be accurate. Please rephrase your question using these columns: {', '.join(available_columns)}",
                 "data_found": True,
                 "confidence": confidence_data["score"]
@@ -539,7 +539,7 @@ async def ask_database(
         
         return {
             "question": request.question,
-            "generated_sql": clean_sql,
+            "generated_sql": display_sql,
             "answer": result,
             "data_found": True,
             "confidence": confidence_data["score"]
