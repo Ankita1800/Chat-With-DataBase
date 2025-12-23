@@ -100,6 +100,9 @@ export default function Home() {
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
   const [hasRestoredState, setHasRestoredState] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -119,6 +122,85 @@ export default function Home() {
         columns: dataset.column_names,
         isUploaded: true,
       });
+    }
+  };
+
+  /**
+   * New Chat: Complete hard reset of application state
+   * Clears localStorage, React state, and UI history
+   */
+  const handleNewChat = () => {
+    // Clear localStorage persistence
+    clearAppState();
+    
+    // Reset all React state
+    setSelectedDataset(null);
+    setColumns([]);
+    setIsUploaded(false);
+    setFile(null);
+    setQuestion("");
+    setResult(null);
+    setHistory([]);
+    localStorage.removeItem("chatHistory");
+    
+    // Reset upload states
+    setIsUploading(false);
+    setUploadProgress(0);
+    
+    // Close duplicate modal if open
+    setShowDuplicateModal(false);
+    setDuplicateInfo(null);
+    setPendingFile(null);
+    
+    console.log("[INFO] New Chat: All state cleared");
+  };
+
+  /**
+   * Delete Dataset: Complete cleanup
+   * - Deletes PostgreSQL table
+   * - Deletes file from storage
+   * - Deletes metadata and query history
+   * - Updates UI state
+   */
+  const handleDeleteDataset = async (datasetId: string, datasetName: string) => {
+    if (!confirm(`Are you sure you want to delete "${datasetName}"?\n\nThis will permanently remove:\n• The dataset and all its data\n• Related query history\n• The uploaded file\n\nThis action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      const response = await fetch(`${API_URL}/datasets/${datasetId}`, {
+        method: "DELETE",
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ detail: "Delete failed" }));
+        throw new Error(errorData.detail || "Failed to delete dataset");
+      }
+
+      const data = await response.json();
+      
+      // If deleted dataset was selected, clear selection
+      if (selectedDataset?.id === datasetId) {
+        setSelectedDataset(null);
+        setColumns([]);
+        setIsUploaded(false);
+        setResult(null);
+        clearAppState();
+      }
+
+      // Reload datasets to update the list
+      await loadDatasets();
+      
+      console.log(`[INFO] Dataset deleted: ${datasetName}`);
+    } catch (error) {
+      console.error("Delete error:", error);
+      alert(`Error deleting dataset: ${error instanceof Error ? error.message : "Unknown error"}`);
     }
   };
 
@@ -237,7 +319,7 @@ export default function Home() {
   };
 
   // Handle File Upload
-  const handleFileUpload = async () => {
+  const handleFileUpload = async (forceUpload: boolean = false) => {
     if (!file) return;
     if (!user) {
       alert("Please sign in to upload files");
@@ -258,7 +340,13 @@ export default function Home() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error("Not authenticated");
 
-      const response = await fetch(`${API_URL}/upload`, {
+      // Build URL with query params for duplicate handling
+      const uploadUrl = new URL(`${API_URL}/upload`);
+      if (forceUpload) {
+        uploadUrl.searchParams.append('force_upload', 'true');
+      }
+
+      const response = await fetch(uploadUrl.toString(), {
         method: "POST",
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
@@ -274,8 +362,21 @@ export default function Home() {
       }
 
       const data = await response.json();
+      
+      // Check if duplicate detected (user needs to make a choice)
+      if (data.duplicate && data.existing_dataset) {
+        console.log("[INFO] Duplicate detected, showing modal");
+        setIsUploading(false);
+        setUploadProgress(0);
+        setDuplicateInfo(data.existing_dataset);
+        setPendingFile(file); // Save file for reuse/force upload decision
+        setShowDuplicateModal(true);
+        return;
+      }
+
       setUploadProgress(100);
 
+      // Handle successful upload or reuse
       if (data.success) {
         const newDatasetId = data.dataset_id;
         
@@ -288,6 +389,11 @@ export default function Home() {
           setHasRestoredState(true); // Prevent localStorage restoration after upload
           
           setFile(null); // Clear file input for next upload
+          
+          // Show appropriate message
+          if (data.reused) {
+            console.log("[INFO] Reused existing dataset");
+          }
         }, 500);
       } else {
         throw new Error(data.error || "Upload failed");
@@ -299,6 +405,77 @@ export default function Home() {
       setIsUploading(false);
       setUploadProgress(0);
     }
+  };
+
+  // Handle reusing existing dataset
+  const handleReuseDataset = async () => {
+    if (!pendingFile || !user || !duplicateInfo) return;
+
+    setShowDuplicateModal(false);
+    setIsUploading(true);
+    setUploadProgress(0);
+
+    const formData = new FormData();
+    formData.append("file", pendingFile);
+
+    const progressInterval = setInterval(() => {
+      setUploadProgress((prev) => Math.min(prev + 10, 90));
+    }, 100);
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("Not authenticated");
+
+      // Request reuse
+      const uploadUrl = new URL(`${API_URL}/upload`);
+      uploadUrl.searchParams.append('reuse', 'true');
+
+      const response = await fetch(uploadUrl.toString(), {
+        method: "POST",
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: formData,
+      });
+
+      clearInterval(progressInterval);
+      
+      if (!response.ok) {
+        throw new Error("Failed to reuse dataset");
+      }
+
+      const data = await response.json();
+      setUploadProgress(100);
+
+      if (data.success) {
+        setTimeout(async () => {
+          setIsUploading(false);
+          setUploadProgress(100);
+          
+          await loadDatasets(data.dataset_id);
+          setHasRestoredState(true);
+          
+          setFile(null);
+          setPendingFile(null);
+          setDuplicateInfo(null);
+        }, 500);
+      }
+    } catch (error) {
+      clearInterval(progressInterval);
+      console.error("Reuse error:", error);
+      alert(`Error reusing dataset: ${error instanceof Error ? error.message : "Unknown error"}`);
+      setIsUploading(false);
+      setUploadProgress(0);
+      setShowDuplicateModal(true); // Show modal again
+    }
+  };
+
+  // Handle uploading as new dataset (force upload)
+  const handleUploadAsNew = () => {
+    setShowDuplicateModal(false);
+    setPendingFile(null);
+    setDuplicateInfo(null);
+    handleFileUpload(true); // Pass force_upload=true
   };
 
   // Handle Drag & Drop
@@ -534,13 +711,11 @@ export default function Home() {
         {/* Collapsible Sidebar */}
         <aside
           className={`${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-          } ${
-            sidebarOpen ? "w-80" : "w-80 lg:w-0"
-          } fixed lg:relative inset-y-0 left-0 z-50 lg:z-auto transition-all duration-300 flex flex-col overflow-hidden`}
-          style={{ backgroundColor: '#F8F4E6', borderRight: '1px solid #E8DFC8', top: '64px' }}
+            sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          } lg:translate-x-0 w-80 sm:w-96 lg:w-80 xl:w-96 fixed lg:sticky inset-y-0 left-0 z-50 lg:z-auto transition-all duration-300 flex flex-col overflow-hidden`}
+          style={{ backgroundColor: '#F8F4E6', borderRight: '1px solid #E8DFC8', top: '0', height: '100vh' }}
         >
-          <div className="p-6 flex-1 overflow-y-auto">
+          <div className="p-4 sm:p-6 flex-1 overflow-y-auto mt-16 lg:mt-0">
             {/* Close button for mobile */}
             <div className="flex items-center justify-between mb-4 lg:hidden">
               <span className="text-sm font-semibold" style={{ color: '#713600' }}>Menu</span>
@@ -564,7 +739,7 @@ export default function Home() {
                 {user && (
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-1.5 rounded-lg transition-colors"
+                    className="p-1.5 rounded-lg transition-colors flex-shrink-0"
                     style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)', color: '#C17817' }}
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.2)'}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'}
@@ -575,13 +750,26 @@ export default function Home() {
                 )}
               </div>
               
+              {/* New Chat Button */}
+              {user && selectedDataset && (
+                <button
+                  onClick={handleNewChat}
+                  className="w-full mb-3 p-2.5 sm:p-3 rounded-lg transition-all font-medium text-xs sm:text-sm flex items-center justify-center gap-2"
+                  style={{ backgroundColor: '#C17817', color: '#FDFBD4', border: '1px solid #C17817' }}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
+                >
+                  <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span>New Chat</span>
+                </button>
+              )}
+              
               {datasets.length > 0 ? (
                 <div className="space-y-2">
                   {datasets.map((dataset) => (
-                    <button
+                    <div
                       key={dataset.id}
-                      onClick={() => selectDataset(dataset)}
-                      className={`w-full p-3 rounded-lg transition-all text-left ${
+                      className={`group relative w-full p-2.5 sm:p-3 rounded-lg transition-all ${
                         selectedDataset?.id === dataset.id ? 'ring-2' : ''
                       }`}
                       style={{
@@ -589,63 +777,78 @@ export default function Home() {
                         border: '1px solid #E8DFC8',
                         ringColor: '#C17817',
                       }}
-                      onMouseEnter={(e) => {
-                        if (selectedDataset?.id !== dataset.id) {
-                          e.currentTarget.style.borderColor = '#C17817';
-                        }
-                      }}
-                      onMouseLeave={(e) => {
-                        if (selectedDataset?.id !== dataset.id) {
-                          e.currentTarget.style.borderColor = '#E8DFC8';
-                        }
-                      }}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                          selectedDataset?.id === dataset.id ? 'ring-2' : ''
-                        }`} style={{ 
-                          backgroundColor: 'rgba(193, 120, 23, 0.15)',
-                          ringColor: '#C17817'
-                        }}>
-                          <Database className="w-5 h-5" style={{ color: '#C17817' }} />
+                      <button
+                        onClick={() => selectDataset(dataset)}
+                        className="w-full text-left"
+                      >
+                        <div className="flex items-start gap-2 sm:gap-3">
+                          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            selectedDataset?.id === dataset.id ? 'ring-2' : ''
+                          }`} style={{ 
+                            backgroundColor: 'rgba(193, 120, 23, 0.15)',
+                            ringColor: '#C17817'
+                          }}>
+                          <Database className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#C17817' }} />
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
+                          <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
                             {selectedDataset?.id === dataset.id && (
-                              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#C17817' }} />
+                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#C17817' }} />
                             )}
-                            <span className="text-sm font-medium truncate" style={{ color: '#713600' }}>
+                            <span className="text-xs sm:text-sm font-medium truncate" style={{ color: '#713600' }}>
                               {dataset.dataset_name}
                             </span>
                           </div>
-                          <p className="text-xs truncate" style={{ color: '#8B5A00' }}>
+                          <p className="text-[10px] sm:text-xs truncate" style={{ color: '#8B5A00' }}>
                             {dataset.row_count} rows • {dataset.column_names.length} columns
                           </p>
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                      
+                      {/* Delete Button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteDataset(dataset.id, dataset.dataset_name);
+                        }}
+                        className="absolute top-2 right-2 p-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                        style={{ backgroundColor: 'rgba(220, 38, 38, 0.1)', color: '#dc2626' }}
+                        onMouseEnter={(e) => { 
+                          e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.2)'; 
+                          e.currentTarget.style.color = '#991b1b';
+                        }}
+                        onMouseLeave={(e) => { 
+                          e.currentTarget.style.backgroundColor = 'rgba(220, 38, 38, 0.1)'; 
+                          e.currentTarget.style.color = '#dc2626';
+                        }}
+                        title="Delete dataset"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                      </button>
+                    </div>
                   ))}
                 </div>
               ) : (
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center gap-2 p-3 border-2 border-dashed rounded-lg transition-all text-sm font-medium"
+                  className="w-full flex items-center gap-2 p-2.5 sm:p-3 border-2 border-dashed rounded-lg transition-all text-xs sm:text-sm font-medium"
                   style={{ borderColor: '#E8DFC8', color: '#8B5A00', backgroundColor: 'transparent' }}
                   onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.05)'; e.currentTarget.style.color = '#C17817'; }}
                   onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = 'transparent'; e.currentTarget.style.color = '#8B5A00'; }}
                 >
-                  <Plus className="w-4 h-4" />
+                  <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span>Upload Your First Dataset</span>
                 </button>
               )}
               
               {/* Show selected dataset columns */}
               {selectedDataset && (
-                <div className="mt-3 p-3 rounded-lg" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }}>
-                  <p className="text-xs font-semibold mb-2" style={{ color: '#8B5A00' }}>COLUMNS:</p>
-                  <div className="flex flex-wrap gap-1.5">
+                <div className="mt-3 p-2.5 sm:p-3 rounded-lg" style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8' }}>
+                  <p className="text-[10px] sm:text-xs font-semibold mb-2" style={{ color: '#8B5A00' }}>COLUMNS:</p>
+                  <div className="flex flex-wrap gap-1 sm:gap-1.5">
                     {selectedDataset.column_names.map((col) => (
-                      <span key={col} className="px-2 py-1 rounded text-xs font-medium" style={{ backgroundColor: '#F8F4E6', color: '#713600', border: '1px solid #E8DFC8' }}>
+                      <span key={col} className="px-1.5 sm:px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs font-medium" style={{ backgroundColor: '#F8F4E6', color: '#713600', border: '1px solid #E8DFC8' }}>
                         {col}
                       </span>
                     ))}
@@ -840,7 +1043,7 @@ export default function Home() {
                 {/* Upload Button */}
                 {file && !isUploading && (
                   <button
-                    onClick={handleFileUpload}
+                    onClick={() => handleFileUpload()}
                     className="w-full mt-4 sm:mt-6 py-3 sm:py-4 rounded-xl font-semibold text-base sm:text-lg flex items-center justify-center gap-2 sm:gap-3 transition-all shadow-sm"
                     style={{ backgroundColor: '#C17817', color: '#FDFBD4' }}
                     onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = '#A66212'; e.currentTarget.style.boxShadow = '0 4px 6px -1px rgba(113, 54, 0, 0.1), 0 2px 4px -1px rgba(113, 54, 0, 0.06)'; }}
@@ -901,20 +1104,21 @@ export default function Home() {
                       type="text"
                       value={question}
                       onChange={(e) => setQuestion(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && !loading && askAI()}
-                      placeholder="Ask about your data..."
+                      onKeyDown={(e) => e.key === "Enter" && !loading && selectedDataset && askAI()}
+                      placeholder={selectedDataset ? "Ask about your data..." : "Select or upload a dataset first..."}
+                      disabled={!selectedDataset}
                       className="w-full pl-10 sm:pl-12 pr-3 sm:pr-4 py-3 sm:py-4 rounded-xl text-sm sm:text-base focus:outline-none focus:ring-2"
-                      style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8', color: '#713600' }}
-                      onFocus={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; }}
+                      style={{ backgroundColor: '#FDFBD4', border: '1px solid #E8DFC8', color: '#713600', cursor: selectedDataset ? 'text' : 'not-allowed', opacity: selectedDataset ? 1 : 0.6 }}
+                      onFocus={(e) => { if (selectedDataset) { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.boxShadow = '0 0 0 2px rgba(193, 120, 23, 0.2)'; } }}
                       onBlur={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.boxShadow = 'none'; }}
                     />
                   </div>
                   <button
                     onClick={askAI}
-                    disabled={loading || !question.trim()}
+                    disabled={loading || !question.trim() || !selectedDataset}
                     className="px-4 sm:px-6 py-3 sm:py-4 rounded-xl font-semibold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all shadow-sm w-full sm:w-auto"
                     style={{ backgroundColor: '#C17817', color: '#FDFBD4' }}
-                    onMouseEnter={(e) => { if (!loading && question.trim()) e.currentTarget.style.backgroundColor = '#A66212'; }}
+                    onMouseEnter={(e) => { if (!loading && question.trim() && selectedDataset) e.currentTarget.style.backgroundColor = '#A66212'; }}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
                   >
                     {loading ? (
@@ -1069,6 +1273,92 @@ export default function Home() {
         isOpen={showContactModal} 
         onClose={() => setShowContactModal(false)}
       />
+
+      {/* Duplicate Dataset Modal */}
+      {showDuplicateModal && duplicateInfo && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          {/* Backdrop */}
+          <div 
+            className="absolute inset-0 bg-black bg-opacity-50"
+            onClick={() => {
+              setShowDuplicateModal(false);
+              setPendingFile(null);
+              setDuplicateInfo(null);
+              setFile(null);
+            }}
+          />
+          
+          {/* Modal */}
+          <div className="relative max-w-md w-full rounded-2xl shadow-2xl p-6" style={{ backgroundColor: '#FDFBD4' }}>
+            {/* Icon */}
+            <div className="w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+              <AlertTriangle className="w-8 h-8" style={{ color: '#C17817' }} />
+            </div>
+            
+            {/* Title */}
+            <h2 className="text-2xl font-bold text-center mb-2" style={{ color: '#713600' }}>
+              Duplicate File Detected
+            </h2>
+            
+            {/* Message */}
+            <p className="text-center mb-6" style={{ color: '#8B5A00' }}>
+              This file already exists in your datasets. Would you like to reuse the existing data or upload it as a new version?
+            </p>
+            
+            {/* Existing Dataset Info */}
+            <div className="rounded-lg p-4 mb-6" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }}>
+              <p className="text-sm font-semibold mb-2" style={{ color: '#8B5A00' }}>Existing Dataset:</p>
+              <p className="font-medium mb-1" style={{ color: '#713600' }}>{duplicateInfo.dataset_name}</p>
+              <p className="text-sm" style={{ color: '#8B5A00' }}>
+                {duplicateInfo.row_count} rows • {duplicateInfo.original_filename}
+              </p>
+              <p className="text-xs mt-1" style={{ color: '#A66212' }}>
+                Created: {new Date(duplicateInfo.created_at).toLocaleDateString()}
+              </p>
+            </div>
+            
+            {/* Action Buttons */}
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={handleReuseDataset}
+                className="w-full py-3 rounded-xl font-semibold transition-all shadow-sm flex items-center justify-center gap-2"
+                style={{ backgroundColor: '#C17817', color: '#FDFBD4' }}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
+              >
+                <Database className="w-5 h-5" />
+                <span>Reuse Existing Dataset</span>
+              </button>
+              
+              <button
+                onClick={handleUploadAsNew}
+                className="w-full py-3 rounded-xl font-semibold transition-all"
+                style={{ backgroundColor: '#F8F4E6', color: '#713600', border: '1px solid #E8DFC8' }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#C17817'; e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#E8DFC8'; e.currentTarget.style.backgroundColor = '#F8F4E6'; }}
+              >
+                <FileUp className="w-5 h-5 inline mr-2" />
+                <span>Upload as New Version</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  setShowDuplicateModal(false);
+                  setPendingFile(null);
+                  setDuplicateInfo(null);
+                  setFile(null);
+                }}
+                className="w-full py-2 rounded-xl font-medium transition-all text-sm"
+                style={{ color: '#8B5A00' }}
+                onMouseEnter={(e) => e.currentTarget.style.color = '#713600'}
+                onMouseLeave={(e) => e.currentTarget.style.color = '#8B5A00'}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

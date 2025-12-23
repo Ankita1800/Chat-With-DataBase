@@ -1,6 +1,7 @@
 import os
 import re
 import uuid
+import hashlib
 import pandas as pd
 import time
 from io import BytesIO
@@ -146,6 +147,66 @@ def generate_table_name(user_id: str, filename: str) -> str:
     unique_id = str(uuid.uuid4())[:8]
     return f"user_{user_id[:8]}_{clean_name}_{unique_id}"
 
+def generate_unique_dataset_name(base_name: str, user_id: str) -> str:
+    """
+    Generate a unique dataset name with automatic versioning.
+    
+    Pattern:
+    - First upload: "job"
+    - Second upload: "job (2)"
+    - Third upload: "job (3)"
+    - etc.
+    
+    Args:
+        base_name: Original filename without extension (e.g., "job")
+        user_id: Current user's ID
+        
+    Returns:
+        Unique dataset name that doesn't conflict with existing datasets
+        
+    Example:
+        >>> generate_unique_dataset_name("job", "user-123")
+        "job"  # First upload
+        >>> generate_unique_dataset_name("job", "user-123")
+        "job (2)"  # Second upload
+    """
+    try:
+        # Fetch all existing dataset names for this user that match the pattern
+        # Using OR to match both exact name and versioned names
+        response = supabase.table("user_datasets")\
+            .select("dataset_name")\
+            .eq("user_id", user_id)\
+            .or_(f"dataset_name.eq.{base_name},dataset_name.like.{base_name} (%)")\
+            .execute()
+        
+        # If no existing datasets, use base name
+        if not response.data or len(response.data) == 0:
+            return base_name
+        
+        # Build set of existing names for fast lookup
+        existing_names = {item['dataset_name'] for item in response.data}
+        
+        # Check if base name is available
+        if base_name not in existing_names:
+            return base_name
+        
+        # Find next available version number
+        version = 2
+        while f"{base_name} ({version})" in existing_names:
+            version += 1
+            # Safety check: prevent infinite loop (extremely rare)
+            if version > 1000:
+                raise Exception("Too many versions of this dataset")
+        
+        return f"{base_name} ({version})"
+        
+    except Exception as e:
+        print(f"[ERROR] Failed to generate unique dataset name: {str(e)}")
+        # Fallback to timestamp-based naming if something goes wrong
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        return f"{base_name}_{timestamp}"
+
 def create_dynamic_table_from_dataframe(df: pd.DataFrame, table_name: str, user_id: str):
     """
     Create a PostgreSQL table dynamically from DataFrame with user_id column
@@ -225,17 +286,26 @@ def get_user_db_chain(user_id: str, table_name: str):
 @app.post("/upload")
 async def upload_file(
     file: UploadFile = File(...),
+    reuse: bool = False,
+    force_upload: bool = False,
     current_user: AuthUser = Depends(get_current_user)
 ):
     """
     Upload CSV file to Supabase Storage and create user-scoped PostgreSQL table
     
-    Flow:
+    Flow with Duplicate Detection:
     1. Verify user authentication (Supabase JWT)
-    2. Upload CSV to Supabase Storage with user_id prefix
-    3. Parse CSV and create dynamic PostgreSQL table
-    4. Store metadata in user_datasets table
-    5. Return success with dataset information
+    2. Read file content and compute SHA-256 hash
+    3. Check for duplicate (user_id + file_hash)
+    4. If duplicate found:
+       - If reuse=True: Return existing dataset metadata (skip upload)
+       - If force_upload=True: Proceed with versioned upload
+       - Else: Return duplicate=True with existing metadata (user must decide)
+    5. If not duplicate or force_upload=True:
+       - Upload CSV to Supabase Storage with user_id prefix
+       - Parse CSV and create dynamic PostgreSQL table
+       - Store metadata in user_datasets table (including file_hash)
+    6. Return success with dataset information
     
     Reference:
     - Storage: https://supabase.com/docs/guides/storage/uploads
@@ -250,6 +320,68 @@ async def upload_file(
         file_content = await file.read()
         file_size = len(file_content)
         
+        # Compute SHA-256 hash of file content
+        try:
+            file_hash = hashlib.sha256(file_content).hexdigest()
+            print(f"[INFO] File hash computed: {file_hash[:16]}...")
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to compute file hash: {str(e)}"
+            )
+        
+        # Check for duplicate (user_id + file_hash) BEFORE any upload
+        try:
+            duplicate_check = supabase.table("user_datasets")\
+                .select("id, dataset_name, original_filename, table_name, column_names, row_count, file_size_bytes, created_at")\
+                .eq("user_id", current_user.id)\
+                .eq("file_hash", file_hash)\
+                .execute()
+            
+            if duplicate_check.data and len(duplicate_check.data) > 0:
+                existing_dataset = duplicate_check.data[0]
+                print(f"[INFO] Duplicate detected: {existing_dataset['dataset_name']}")
+                
+                # If reuse=True, return existing dataset immediately
+                if reuse:
+                    print(f"[INFO] Reusing existing dataset: {existing_dataset['id']}")
+                    return {
+                        "success": True,
+                        "reused": True,
+                        "message": "Reusing existing dataset",
+                        "dataset_id": existing_dataset["id"],
+                        "dataset_name": existing_dataset["dataset_name"],
+                        "table_name": existing_dataset["table_name"],
+                        "columns": existing_dataset["column_names"],
+                        "row_count": existing_dataset["row_count"],
+                        "file_size_bytes": existing_dataset["file_size_bytes"]
+                    }
+                
+                # If force_upload=False, inform frontend about duplicate
+                if not force_upload:
+                    print(f"[INFO] Returning duplicate=True, waiting for user consent")
+                    return {
+                        "duplicate": True,
+                        "existing_dataset": {
+                            "id": existing_dataset["id"],
+                            "dataset_name": existing_dataset["dataset_name"],
+                            "original_filename": existing_dataset["original_filename"],
+                            "row_count": existing_dataset["row_count"],
+                            "created_at": existing_dataset["created_at"]
+                        },
+                        "message": "This file already exists. Choose to reuse or upload as new."
+                    }
+                
+                # If force_upload=True, continue with upload (will create versioned name)
+                print(f"[INFO] Force upload requested, creating new version")
+        
+        except Exception as e:
+            # Fail loudly if duplicate check fails
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to check for duplicates: {str(e)}"
+            )
+        
         # Parse CSV
         try:
             df = pd.read_csv(BytesIO(file_content))
@@ -263,6 +395,10 @@ async def upload_file(
         dataset_id = str(uuid.uuid4())
         table_name = generate_table_name(current_user.id, file.filename)
         storage_path = f"{current_user.id}/{dataset_id}/{file.filename}"
+        
+        # Generate unique dataset name with automatic versioning
+        base_name = file.filename.rsplit('.', 1)[0]
+        dataset_name = generate_unique_dataset_name(base_name, current_user.id)
         
         # Upload to Supabase Storage
         # Reference: https://supabase.com/docs/reference/python/storage-upload
@@ -295,24 +431,8 @@ async def upload_file(
                 detail=f"Failed to create database table: {str(e)}"
             )
         
-        # Store metadata in user_datasets table
-        # Check if dataset name already exists and make it unique
-        base_name = file.filename.rsplit('.', 1)[0]
-        dataset_name = base_name
-        
-        # Check for duplicates and add timestamp if needed
-        existing_check = supabase.table("user_datasets")\
-            .select("dataset_name")\
-            .eq("user_id", current_user.id)\
-            .eq("dataset_name", dataset_name)\
-            .execute()
-        
-        if existing_check.data and len(existing_check.data) > 0:
-            # Add timestamp to make it unique
-            from datetime import datetime
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            dataset_name = f"{base_name}_{timestamp}"
-        
+        # Store metadata in user_datasets table WITH file_hash
+        # Dataset name already generated with unique versioning above
         try:
             supabase.table("user_datasets").insert({
                 "id": dataset_id,
@@ -323,7 +443,8 @@ async def upload_file(
                 "table_name": table_name,
                 "column_names": list(df.columns),
                 "row_count": len(df),
-                "file_size_bytes": file_size
+                "file_size_bytes": file_size,
+                "file_hash": file_hash  # Include file hash for duplicate detection
             }).execute()
         except Exception as e:
             # Rollback: delete storage and table if metadata insert fails
@@ -376,6 +497,100 @@ async def list_datasets(current_user: AuthUser = Depends(get_current_user)):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch datasets: {str(e)}")
+
+@app.delete("/datasets/{dataset_id}")
+async def delete_dataset(
+    dataset_id: str,
+    current_user: AuthUser = Depends(get_current_user)
+):
+    """
+    Delete a dataset completely:
+    1. Verify user owns the dataset
+    2. Drop the dynamic PostgreSQL table
+    3. Delete file from Supabase Storage
+    4. Delete metadata from user_datasets table
+    5. Delete related query history
+    
+    This is a complete cleanup - no orphaned data left behind
+    """
+    try:
+        # Step 1: Get dataset metadata and verify ownership
+        dataset_response = supabase.table("user_datasets")\
+            .select("*")\
+            .eq("id", dataset_id)\
+            .eq("user_id", current_user.id)\
+            .execute()
+        
+        if not dataset_response.data or len(dataset_response.data) == 0:
+            raise HTTPException(
+                status_code=404,
+                detail="Dataset not found or you don't have permission to delete it"
+            )
+        
+        dataset = dataset_response.data[0]
+        table_name = dataset["table_name"]
+        storage_path = dataset["storage_path"]
+        
+        print(f"[INFO] Deleting dataset {dataset_id}: {dataset['dataset_name']}")
+        
+        # Step 2: Drop the PostgreSQL table
+        try:
+            with db_engine.connect() as conn:
+                # Use parameterized query to prevent SQL injection
+                conn.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+                conn.commit()
+            print(f"[INFO] Dropped table: {table_name}")
+        except Exception as e:
+            print(f"[WARNING] Failed to drop table {table_name}: {str(e)}")
+            # Continue with deletion even if table drop fails
+        
+        # Step 3: Delete file from Supabase Storage
+        try:
+            supabase.storage.from_(STORAGE_BUCKET_NAME).remove([storage_path])
+            print(f"[INFO] Deleted storage file: {storage_path}")
+        except Exception as e:
+            print(f"[WARNING] Failed to delete storage file {storage_path}: {str(e)}")
+            # Continue with deletion even if storage delete fails
+        
+        # Step 4: Delete related query history (CASCADE handles this, but explicit is better)
+        try:
+            supabase.table("query_history")\
+                .delete()\
+                .eq("dataset_id", dataset_id)\
+                .eq("user_id", current_user.id)\
+                .execute()
+            print(f"[INFO] Deleted query history for dataset {dataset_id}")
+        except Exception as e:
+            print(f"[WARNING] Failed to delete query history: {str(e)}")
+        
+        # Step 5: Delete metadata from user_datasets table
+        try:
+            supabase.table("user_datasets")\
+                .delete()\
+                .eq("id", dataset_id)\
+                .eq("user_id", current_user.id)\
+                .execute()
+            print(f"[INFO] Deleted metadata for dataset {dataset_id}")
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to delete dataset metadata: {str(e)}"
+            )
+        
+        return {
+            "success": True,
+            "message": f"Dataset '{dataset['dataset_name']}' deleted successfully",
+            "deleted_dataset_id": dataset_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Delete dataset failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete dataset: {str(e)}"
+        )
 
 # ============ QUERY ENDPOINT ============
 
