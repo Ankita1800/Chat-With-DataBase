@@ -41,7 +41,7 @@ import DocsSidebar from "./DocsSidebar";
 import ContactModal from "./ContactModal";
 import { supabase } from "../lib/supabase";
 import { shouldShowStorageWarning, dismissStorageWarning } from "../lib/config";
-import { saveAppState, loadAppState } from "../lib/persistence";
+import { saveAppState, loadAppState, clearAppState } from "../lib/persistence";
 import type { User, Session, AuthChangeEvent } from "@supabase/supabase-js";
 
 // API Configuration
@@ -99,8 +99,28 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [selectedDataset, setSelectedDataset] = useState<Dataset | null>(null);
+  const [hasRestoredState, setHasRestoredState] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Atomically select a dataset and update all related state
+   * Prevents state synchronization bugs
+   */
+  const selectDataset = (dataset: Dataset | null) => {
+    setSelectedDataset(dataset);
+    setColumns(dataset?.column_names || []);
+    setIsUploaded(dataset !== null);
+    
+    // Update persistence
+    if (dataset) {
+      saveAppState({
+        selectedDatasetId: dataset.id,
+        columns: dataset.column_names,
+        isUploaded: true,
+      });
+    }
+  };
 
   // Setup Supabase auth state listener
   useEffect(() => {
@@ -128,19 +148,19 @@ export default function Home() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Load persisted app state on mount
+  // Load persisted app state on mount (ONCE ONLY)
   useEffect(() => {
-    const persistedState = loadAppState();
-    if (persistedState && datasets.length > 0) {
-      // Find the previously selected dataset
-      const dataset = datasets.find(d => d.id === persistedState.selectedDatasetId);
-      if (dataset) {
-        setSelectedDataset(dataset);
-        setColumns(dataset.column_names);
-        setIsUploaded(true);
+    if (datasets.length > 0 && !hasRestoredState) {
+      const persistedState = loadAppState();
+      if (persistedState?.selectedDatasetId) {
+        const dataset = datasets.find(d => d.id === persistedState.selectedDatasetId);
+        if (dataset) {
+          selectDataset(dataset);
+        }
       }
+      setHasRestoredState(true); // Prevent re-triggering
     }
-  }, [datasets]);
+  }, [datasets, hasRestoredState]);
 
   // Save app state whenever it changes
   useEffect(() => {
@@ -188,13 +208,11 @@ export default function Home() {
         const fetchedDatasets = data.datasets || [];
         setDatasets(fetchedDatasets);
         
-        // If selectDatasetId is provided, select that dataset
+        // If selectDatasetId is provided, select that dataset atomically
         if (selectDatasetId && fetchedDatasets.length > 0) {
           const datasetToSelect = fetchedDatasets.find((d: Dataset) => d.id === selectDatasetId);
           if (datasetToSelect) {
-            setSelectedDataset(datasetToSelect);
-            setColumns(datasetToSelect.column_names);
-            setIsUploaded(true);
+            selectDataset(datasetToSelect);
           }
         }
       }
@@ -267,6 +285,7 @@ export default function Home() {
           
           // Reload datasets and automatically select the newly uploaded one
           await loadDatasets(newDatasetId);
+          setHasRestoredState(true); // Prevent localStorage restoration after upload
           
           setFile(null); // Clear file input for next upload
         }, 500);
@@ -561,11 +580,7 @@ export default function Home() {
                   {datasets.map((dataset) => (
                     <button
                       key={dataset.id}
-                      onClick={() => {
-                        setSelectedDataset(dataset);
-                        setColumns(dataset.column_names);
-                        setIsUploaded(true);
-                      }}
+                      onClick={() => selectDataset(dataset)}
                       className={`w-full p-3 rounded-lg transition-all text-left ${
                         selectedDataset?.id === dataset.id ? 'ring-2' : ''
                       }`}
