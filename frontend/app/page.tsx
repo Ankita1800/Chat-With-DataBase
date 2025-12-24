@@ -789,20 +789,21 @@ export default function Home() {
                             backgroundColor: 'rgba(193, 120, 23, 0.15)',
                             ringColor: '#C17817'
                           }}>
-                          <Database className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#C17817' }} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
-                            {selectedDataset?.id === dataset.id && (
-                              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#C17817' }} />
-                            )}
-                            <span className="text-xs sm:text-sm font-medium truncate" style={{ color: '#713600' }}>
-                              {dataset.dataset_name}
-                            </span>
+                            <Database className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#C17817' }} />
                           </div>
-                          <p className="text-[10px] sm:text-xs truncate" style={{ color: '#8B5A00' }}>
-                            {dataset.row_count} rows • {dataset.column_names.length} columns
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
+                              {selectedDataset?.id === dataset.id && (
+                                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#C17817' }} />
+                              )}
+                              <span className="text-xs sm:text-sm font-medium truncate" style={{ color: '#713600' }}>
+                                {dataset.dataset_name}
+                              </span>
+                            </div>
+                            <p className="text-[10px] sm:text-xs truncate" style={{ color: '#8B5A00' }}>
+                              {dataset.row_count} rows • {dataset.column_names.length} columns
+                            </p>
+                          </div>
                         </div>
                       </button>
                       
