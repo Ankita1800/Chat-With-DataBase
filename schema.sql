@@ -423,11 +423,13 @@ CREATE POLICY "users_delete_own_files"
 -- 3. ✅ Functions and triggers set up
 -- 4. Configure Auth providers in Supabase Dashboard:
 --    - Email/Password: https://supabase.com/dashboard/project/_/auth/providers
---    - Google OAuth: Add credentials and redirect URLs
--- 5. Update .env file with:
+--    - Google OAuth (optional): Add credentials with redirect URL http://localhost:3000/auth/google/callback
+-- 5. Update .env file (backend) and .env.local (frontend) with:
 --    - SUPABASE_URL
---    - SUPABASE_ANON_KEY (for frontend)
---    - SUPABASE_SERVICE_KEY (for backend)
--- 6. Test authentication flow
--- 7. Deploy backend and frontend
+--    - SUPABASE_ANON_KEY
+--    - DATABASE_URL
+--    - GROQ_API_KEY
+-- 6. Start backend: python main.py (runs on http://127.0.0.1:8000)
+-- 7. Start frontend: npm run dev (runs on http://localhost:3000)
+-- 8. Test locally - see frontend/LOCAL_TESTING.md for complete guide
 -- =====================================================

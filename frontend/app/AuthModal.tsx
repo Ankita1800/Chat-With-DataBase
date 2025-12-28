@@ -86,12 +86,15 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode = "s
       setLoading(true);
       setError("");
       
+      // Get the site URL from environment or use localhost
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+      
       // Sign in with Google using Supabase
       // Reference: https://supabase.com/docs/guides/auth/social-login/auth-google
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/`,
+          redirectTo: siteUrl,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',

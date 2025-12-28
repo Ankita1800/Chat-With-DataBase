@@ -197,20 +197,24 @@ npm run dev
 
 ---
 
-## 🚀 Deployment
+## 🧪 Local Testing
 
-### Backend Options
-- Railway (recommended)
-- Render
-- Heroku
-- DigitalOcean App Platform
+**All testing is done locally** - no cloud deployment needed to get started!
 
-### Frontend Options
-- Vercel (recommended for Next.js)
-- Netlify
-- Cloudflare Pages
+### Quick Start
+1. **Backend**: Run `python main.py` (starts on http://127.0.0.1:8000)
+2. **Frontend**: Run `npm run dev` in `frontend/` folder (starts on http://localhost:3000)
+3. **Database**: Uses your Supabase cloud database (free tier)
 
-**See [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md#deployment) for deployment instructions.**
+**See [frontend/LOCAL_TESTING.md](./frontend/LOCAL_TESTING.md) for complete step-by-step instructions.**
+
+### What You Can Test Locally
+- ✅ User authentication (email/password, OAuth)
+- ✅ CSV file uploads and data ingestion
+- ✅ Natural language to SQL queries
+- ✅ Multi-user data isolation
+- ✅ Query history and confidence scoring
+- ✅ All API endpoints and features
 
 ---
 
@@ -229,7 +233,43 @@ All endpoints require `Authorization: Bearer {token}` header.
 
 ---
 
-## 🧪 Testing
+## 🧪 Local Testing
+
+**All testing is done locally** - no cloud deployment needed to get started!
+
+### Quick Start
+1. **Backend**: Run `python main.py` (starts on http://127.0.0.1:8000)
+2. **Frontend**: Run `npm run dev` in `frontend/` folder (starts on http://localhost:3000)
+3. **Database**: Uses your Supabase cloud database (free tier)
+
+**See [frontend/LOCAL_TESTING.md](./frontend/LOCAL_TESTING.md) for complete step-by-step instructions.**
+
+### What You Can Test Locally
+- ✅ User authentication (email/password, OAuth)
+- ✅ CSV file uploads and data ingestion
+- ✅ Natural language to SQL queries
+- ✅ Multi-user data isolation
+- ✅ Query history and confidence scoring
+- ✅ All API endpoints and features
+
+---
+
+## 📖 API Documentation
+
+### Authentication
+All endpoints require `Authorization: Bearer {token}` header.
+
+### Endpoints
+- `POST /upload` - Upload CSV file
+- `POST /ask` - Query dataset with natural language
+- `GET /datasets` - List user's datasets
+- `GET /health` - Health check
+
+**Interactive API docs**: http://127.0.0.1:8000/docs
+
+---
+
+## 🧪 Testing Checklist
 
 ### Multi-User Isolation Test
 1. Create User A, upload `sales.csv`
@@ -241,7 +281,7 @@ All endpoints require `Authorization: Bearer {token}` header.
 1. Verify JWT verification works
 2. Test RLS with SQL Editor in Supabase
 3. Try accessing another user's Storage file
-4. Verify CORS restrictions
+4. Verify CORS restrictions (only localhost allowed)
 
 ---
 
@@ -255,7 +295,8 @@ All endpoints require `Authorization: Bearer {token}` header.
 | "RLS violated" | Verify RLS policies in SQL Editor |
 | Storage upload fails | Check storage policies and bucket |
 | Database connection error | Verify `SUPABASE_DB_PASSWORD` |
+| CORS errors | Only localhost:3000 is allowed, verify frontend URL |
 
-**See [MIGRATION_GUIDE.md](./MIGRATION_GUIDE.md#troubleshooting) for more.**
+**See [frontend/LOCAL_TESTING.md](./frontend/LOCAL_TESTING.md#troubleshooting) for complete troubleshooting guide.**
 
 ---

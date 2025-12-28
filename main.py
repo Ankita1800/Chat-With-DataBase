@@ -74,13 +74,12 @@ except Exception as e:
 # 2. Setup the App
 app = FastAPI(title="Chat with Database API - Supabase Edition")
 
-# CORS Configuration - Allow frontend from Vercel and localhost
+# CORS Configuration - Allow frontend from localhost for local development
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "https://*.vercel.app",  # All Vercel preview deployments
-        "*"  # Allow all origins for now (restrict in production)
+        "http://localhost:3000",  # Frontend dev server
+        "http://127.0.0.1:3000",  # Alternative localhost
     ],
     allow_credentials=True,
     allow_methods=["*"],

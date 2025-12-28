@@ -768,7 +768,7 @@ export default function Home() {
                 {user && (
                   <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="p-1.5 rounded-lg transition-colors flex-shrink-0"
+                    className="p-1.5 rounded-lg transition-colors shrink-0"
                     style={{ backgroundColor: 'rgba(193, 120, 23, 0.1)', color: '#C17817' }}
                     onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.2)'}
                     onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(193, 120, 23, 0.1)'}
@@ -799,12 +799,11 @@ export default function Home() {
                     <div
                       key={dataset.id}
                       className={`group relative w-full p-2.5 sm:p-3 rounded-lg transition-all ${
-                        selectedDataset?.id === dataset.id ? 'ring-2' : ''
+                        selectedDataset?.id === dataset.id ? 'ring-2 ring-[#C17817]' : ''
                       }`}
                       style={{
                         backgroundColor: selectedDataset?.id === dataset.id ? '#FDFBD4' : '#F8F4E6',
                         border: '1px solid #E8DFC8',
-                        ringColor: '#C17817',
                       }}
                     >
                       <button
@@ -812,18 +811,17 @@ export default function Home() {
                         className="w-full text-left"
                       >
                         <div className="flex items-start gap-2 sm:gap-3">
-                          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                            selectedDataset?.id === dataset.id ? 'ring-2' : ''
+                          <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center shrink-0 ${
+                            selectedDataset?.id === dataset.id ? 'ring-2 ring-[#C17817]' : ''
                           }`} style={{ 
                             backgroundColor: 'rgba(193, 120, 23, 0.15)',
-                            ringColor: '#C17817'
                           }}>
                             <Database className="w-4 h-4 sm:w-5 sm:h-5" style={{ color: '#C17817' }} />
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
                               {selectedDataset?.id === dataset.id && (
-                                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full flex-shrink-0" style={{ backgroundColor: '#C17817' }} />
+                                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full shrink-0" style={{ backgroundColor: '#C17817' }} />
                               )}
                               <span className="text-xs sm:text-sm font-medium truncate" style={{ color: '#713600' }}>
                                 {dataset.dataset_name}
@@ -997,7 +995,7 @@ export default function Home() {
               {/* Hero */}
               <div className="text-center mb-8 sm:mb-12">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-3 sm:mb-4 leading-tight" style={{ color: '#713600' }}>
-                  Chat with Your Database<br className="hidden sm:block" />
+                  Chat with Your Data<br className="hidden sm:block" />
                   <span className="sm:hidden"> </span>using AI
                 </h1>
                 <p className="text-lg sm:text-xl mb-2" style={{ color: '#8B5A00' }}>
@@ -1094,12 +1092,12 @@ export default function Home() {
               <div className="rounded-xl p-4 sm:p-6 mb-4 sm:mb-6" style={{ backgroundColor: '#F8F4E6', border: '1px solid #E8DFC8' }}>
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
                   <div className="flex items-center gap-3 sm:gap-4 flex-1">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: 'rgba(193, 120, 23, 0.15)' }}>
                       <Database className="w-5 h-5 sm:w-6 sm:h-6" style={{ color: '#C17817' }} />
                     </div>
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full animate-pulse flex-shrink-0" style={{ backgroundColor: '#C17817' }} />
+                        <span className="w-2 h-2 rounded-full animate-pulse shrink-0" style={{ backgroundColor: '#C17817' }} />
                         <h3 className="text-base sm:text-lg font-semibold truncate" style={{ color: '#713600' }}>
                           {selectedDataset ? selectedDataset.dataset_name : 'Database Connected'}
                         </h3>
@@ -1114,7 +1112,7 @@ export default function Home() {
                   <div className="flex gap-2">
                     <button
                       onClick={() => fileInputRef.current?.click()}
-                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition-colors flex-shrink-0 font-medium"
+                      className="px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg transition-colors shrink-0 font-medium"
                       style={{ color: '#FDFBD4', backgroundColor: '#C17817' }}
                       onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#A66212'}
                       onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#C17817'}
