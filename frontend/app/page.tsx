@@ -103,6 +103,7 @@ export default function Home() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateInfo, setDuplicateInfo] = useState<any>(null);
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -204,6 +205,11 @@ export default function Home() {
     }
   };
 
+  // Mount detection for hydration safety
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
   // Setup Supabase auth state listener
   useEffect(() => {
     // Check current session
@@ -255,16 +261,22 @@ export default function Home() {
     }
   }, [selectedDataset, columns, isUploaded]);
 
-  // Load history from localStorage
+  // Load history from localStorage (only after mount for hydration safety)
   useEffect(() => {
+    if (!isMounted) return;
     const savedHistory = localStorage.getItem("chatHistory");
     if (savedHistory) {
-      setHistory(JSON.parse(savedHistory).map((item: HistoryItem) => ({
-        ...item,
-        timestamp: new Date(item.timestamp)
-      })));
+      try {
+        setHistory(JSON.parse(savedHistory).map((item: HistoryItem) => ({
+          ...item,
+          timestamp: new Date(item.timestamp)
+        })));
+      } catch (error) {
+        console.error("Failed to load history:", error);
+        localStorage.removeItem("chatHistory");
+      }
     }
-  }, []);
+  }, [isMounted]);
 
   // Save history to localStorage
   useEffect(() => {
@@ -376,8 +388,8 @@ export default function Home() {
 
       setUploadProgress(100);
 
-      // Handle successful upload or reuse
-      if (data.success) {
+      // Handle successful upload or reuse - only switch dataset context after success
+      if (data.success && data.dataset_id) {
         const newDatasetId = data.dataset_id;
         
         setTimeout(async () => {
@@ -385,6 +397,7 @@ export default function Home() {
           setUploadProgress(100);
           
           // Reload datasets and automatically select the newly uploaded one
+          // This ensures we only switch dataset context after receiving successful response
           await loadDatasets(newDatasetId);
           setHasRestoredState(true); // Prevent localStorage restoration after upload
           
@@ -393,6 +406,8 @@ export default function Home() {
           // Show appropriate message
           if (data.reused) {
             console.log("[INFO] Reused existing dataset");
+          } else {
+            console.log("[INFO] Successfully uploaded new dataset");
           }
         }, 500);
       } else {
@@ -447,18 +462,22 @@ export default function Home() {
       const data = await response.json();
       setUploadProgress(100);
 
-      if (data.success) {
+      if (data.success && data.dataset_id) {
         setTimeout(async () => {
           setIsUploading(false);
           setUploadProgress(100);
           
+          // Only switch dataset context after successful reuse response
           await loadDatasets(data.dataset_id);
           setHasRestoredState(true);
           
           setFile(null);
           setPendingFile(null);
           setDuplicateInfo(null);
+          console.log("[INFO] Successfully reused existing dataset");
         }, 500);
+      } else {
+        throw new Error("Reuse failed: Missing dataset_id in response");
       }
     } catch (error) {
       clearInterval(progressInterval);
@@ -489,12 +508,22 @@ export default function Home() {
     setIsDragOver(false);
   };
 
+  // Handle file selection - clear persisted state to prevent reuse of old datasets
+  const handleFileSelection = (selectedFile: File | null) => {
+    if (selectedFile) {
+      // Clear all persisted state when new file is selected
+      clearAppState();
+      console.log("[INFO] File selected: cleared persisted state");
+    }
+    setFile(selectedFile);
+  };
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragOver(false);
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile && droppedFile.name.endsWith(".csv")) {
-      setFile(droppedFile);
+      handleFileSelection(droppedFile);
     } else {
       alert("Please upload a CSV file");
     }
@@ -998,7 +1027,7 @@ export default function Home() {
                     ref={fileInputRef}
                     type="file"
                     accept=".csv"
-                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                    onChange={(e) => handleFileSelection(e.target.files?.[0] || null)}
                     className="hidden"
                   />
 
