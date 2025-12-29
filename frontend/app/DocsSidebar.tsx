@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Book, FileText, Database, Clock, Zap, Upload, MessageSquare, Shield, Cloud, Mail } from "lucide-react";
 
 interface DocsSidebarProps {
@@ -17,7 +17,22 @@ type DocSection = {
 export default function DocsSidebar({ isOpen, onClose }: DocsSidebarProps) {
   const [activeSection, setActiveSection] = useState("introduction");
 
-  if (!isOpen) return null;
+  // Handle ESC key press
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [isOpen, onClose]);
 
   const sections: DocSection[] = [
     {
@@ -341,9 +356,17 @@ export default function DocsSidebar({ isOpen, onClose }: DocsSidebarProps) {
   const activeContent = sections.find(s => s.id === activeSection);
 
   return (
-    <div className="fixed inset-0 z-50 flex" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+    <div 
+      className={`fixed inset-0 flex transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+      style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)', zIndex: 60 }}
+      onClick={onClose}
+    >
       {/* Sidebar */}
-      <div className="w-80 h-full overflow-y-auto" style={{ backgroundColor: '#FDFBD4', borderRight: '2px solid rgba(193, 120, 23, 0.2)' }}>
+      <div 
+        className={`w-80 h-full overflow-y-auto transition-transform duration-300 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
+        style={{ backgroundColor: '#FDFBD4', borderRight: '2px solid rgba(193, 120, 23, 0.2)' }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="p-6">
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-2xl font-bold" style={{ color: '#713600' }}>Documentation</h2>
@@ -393,7 +416,11 @@ export default function DocsSidebar({ isOpen, onClose }: DocsSidebarProps) {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 h-full overflow-y-auto" style={{ backgroundColor: '#F8F4E6' }}>
+      <div 
+        className={`flex-1 h-full overflow-y-auto transition-transform duration-300 ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        style={{ backgroundColor: '#F8F4E6' }}
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="max-w-4xl mx-auto p-8">
           {activeContent?.content}
         </div>

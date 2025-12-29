@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Send, CheckCircle, AlertCircle } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
@@ -20,7 +20,22 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [error, setError] = useState("");
 
-  if (!isOpen) return null;
+  // Handle ESC key press
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [isOpen, onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,12 +93,12 @@ export default function ContactModal({ isOpen, onClose }: ContactModalProps) {
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-4" 
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
       style={{ backgroundColor: 'rgba(0, 0, 0, 0.6)' }}
       onClick={onClose}
     >
       <div 
-        className="w-full max-w-2xl rounded-2xl p-8 relative"
+        className={`w-full max-w-2xl rounded-2xl p-8 relative transition-transform duration-300 ${isOpen ? 'scale-100' : 'scale-95'}`}
         style={{ 
           backgroundColor: '#FDFBD4',
           maxHeight: '90vh',

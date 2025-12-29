@@ -215,14 +215,27 @@ def create_dynamic_table_from_dataframe(df: pd.DataFrame, table_name: str, user_
         print(f"[DEBUG] Creating table {table_name} for user {user_id}")
         metadata = MetaData()
         
+        # Rename conflicting columns (id, user_id) to avoid conflicts with system columns
+        df_renamed = df.copy()
+        rename_map = {}
+        for col in df_renamed.columns:
+            col_lower = col.lower()
+            if col_lower == 'id':
+                rename_map[col] = 'original_id'
+            elif col_lower == 'user_id':
+                rename_map[col] = 'original_user_id'
+        if rename_map:
+            df_renamed = df_renamed.rename(columns=rename_map)
+            print(f"[DEBUG] Renamed conflicting columns: {rename_map}")
+        
         # Define columns based on DataFrame dtypes
         columns = [
             Column('id', Integer, primary_key=True, autoincrement=True),
             Column('user_id', String, nullable=False, index=True)  # Add user_id for RLS
         ]
         
-        for col_name in df.columns:
-            dtype = df[col_name].dtype
+        for col_name in df_renamed.columns:
+            dtype = df_renamed[col_name].dtype
             if dtype == 'int64':
                 sql_type = Integer
             elif dtype == 'float64':
@@ -238,7 +251,7 @@ def create_dynamic_table_from_dataframe(df: pd.DataFrame, table_name: str, user_
         print(f"[DEBUG] Table created successfully")
         
         # Insert data with user_id
-        df_with_user = df.copy()
+        df_with_user = df_renamed.copy()
         df_with_user.insert(0, 'user_id', user_id)
         
         print(f"[DEBUG] Inserting {len(df_with_user)} rows...")
@@ -253,7 +266,7 @@ def create_dynamic_table_from_dataframe(df: pd.DataFrame, table_name: str, user_
             conn.commit()
         print(f"[DEBUG] Data inserted successfully")
         
-        return table_name
+        return table_name, list(df_renamed.columns)
     except Exception as e:
         print(f"[ERROR] Failed to create table: {type(e).__name__}: {str(e)}")
         import traceback
@@ -418,7 +431,7 @@ async def upload_file(
         
         # Create PostgreSQL table with data
         try:
-            create_dynamic_table_from_dataframe(df, table_name, current_user.id)
+            table_name, renamed_columns = create_dynamic_table_from_dataframe(df, table_name, current_user.id)
         except Exception as e:
             # Rollback: delete from storage if table creation fails
             try:
@@ -440,7 +453,7 @@ async def upload_file(
                 "original_filename": file.filename,
                 "storage_path": storage_path,
                 "table_name": table_name,
-                "column_names": list(df.columns),
+                "column_names": renamed_columns,
                 "row_count": len(df),
                 "file_size_bytes": file_size,
                 "file_hash": file_hash  # Include file hash for duplicate detection
@@ -465,7 +478,7 @@ async def upload_file(
             "dataset_id": dataset_id,
             "dataset_name": dataset_name,
             "table_name": table_name,
-            "columns": list(df.columns),
+            "columns": renamed_columns,
             "row_count": len(df),
             "file_size_bytes": file_size
         }

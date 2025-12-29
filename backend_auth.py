@@ -35,6 +35,73 @@ class AuthUser(BaseModel):
         frozen = True
 
 
+def decode_token(token: str) -> dict:
+    """
+    Decode JWT token using Supabase secret
+    
+    Args:
+        token: JWT token string
+        
+    Returns:
+        Decoded JWT payload
+        
+    Raises:
+        jwt exceptions for various token errors
+    """
+    return jwt.decode(
+        token,
+        SUPABASE_JWT_SECRET,
+        algorithms=["HS256"],
+        audience="authenticated",
+        options={
+            "verify_signature": True,
+            "verify_exp": True,
+            "verify_aud": True,
+        }
+    )
+
+
+def validate_claims(payload: dict) -> None:
+    """
+    Validate required JWT claims
+    
+    Args:
+        payload: Decoded JWT payload
+        
+    Raises:
+        HTTPException: If required claims are missing
+    """
+    if "sub" not in payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing user ID (sub claim)"
+        )
+        
+    if "email" not in payload:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing email claim"
+        )
+
+
+def build_user_object(payload: dict) -> dict:
+    """
+    Extract user information from verified JWT payload
+    
+    Args:
+        payload: Decoded and validated JWT payload
+        
+    Returns:
+        Dictionary with user information
+    """
+    return {
+        "id": payload["sub"],
+        "email": payload["email"],
+        "role": payload.get("role", "authenticated"),
+        "aud": payload.get("aud", "authenticated")
+    }
+
+
 def verify_supabase_jwt(token: str) -> dict:
     """
     Verify Supabase-issued JWT token
@@ -53,32 +120,11 @@ def verify_supabase_jwt(token: str) -> dict:
     - https://supabase.com/docs/guides/auth/server-side
     """
     try:
-        # Decode and verify JWT using Supabase JWT secret
-        # Supabase uses HS256 algorithm for JWTs
-        payload = jwt.decode(
-            token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated",  # Supabase default audience
-            options={
-                "verify_signature": True,
-                "verify_exp": True,
-                "verify_aud": True,
-            }
-        )
+        # Step 1: Decode token
+        payload = decode_token(token)
         
-        # Validate required claims
-        if "sub" not in payload:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing user ID (sub claim)"
-            )
-            
-        if "email" not in payload:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token: missing email claim"
-            )
+        # Step 2: Validate required claims
+        validate_claims(payload)
         
         return payload
         
@@ -130,14 +176,10 @@ async def get_current_user(
     """
     token = credentials.credentials
     payload = verify_supabase_jwt(token)
+    user_data = build_user_object(payload)
     
-    # Extract user information from JWT payload
-    return AuthUser(
-        id=payload["sub"],  # Supabase user UUID
-        email=payload["email"],
-        role=payload.get("role", "authenticated"),
-        aud=payload.get("aud", "authenticated")
-    )
+    # Build AuthUser from extracted data
+    return AuthUser(**user_data)
 
 
 def get_user_id_from_token(token: str) -> str:

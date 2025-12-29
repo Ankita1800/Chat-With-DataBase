@@ -31,7 +31,22 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode = "s
     }
   }, [isOpen, initialMode]);
 
-  if (!isOpen) return null;
+  // Handle ESC key press
+  useEffect(() => {
+    const handleEscKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscKey);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscKey);
+    };
+  }, [isOpen, onClose]);
 
   const handleEmailAuth = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,8 +128,8 @@ export default function AuthModal({ isOpen, onClose, onSuccess, initialMode = "s
 
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
-      <div className="w-full max-w-md rounded-2xl p-8 relative" style={{ backgroundColor: '#FDFBD4' }}>
+    <div className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} style={{ backgroundColor: 'rgba(0, 0, 0, 0.5)' }}>
+      <div className={`w-full max-w-md rounded-2xl p-8 relative transition-transform duration-300 ${isOpen ? 'scale-100' : 'scale-95'}`} style={{ backgroundColor: '#FDFBD4' }}>
         {/* Close button */}
         <button
           onClick={onClose}
