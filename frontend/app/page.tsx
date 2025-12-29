@@ -499,7 +499,7 @@ export default function Home() {
               {/* Hero */}
               <div className="text-center mb-8 sm:mb-12">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-3 sm:mb-4 leading-tight" style={{ color: '#713600' }}>
-                  Chat with Your Data<br className="hidden sm:block" />
+                  Chat with Your Database<br className="hidden sm:block" />
                   <span className="sm:hidden"> </span>using AI
                 </h1>
                 <p className="text-lg sm:text-xl mb-2" style={{ color: '#8B5A00' }}>
