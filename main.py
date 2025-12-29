@@ -80,7 +80,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",  # Frontend dev server
         "http://127.0.0.1:3000",  # Alternative localhost
-        "https://chat-with-data-base.vercel.app",  # Production Vercel deployment
+        "https://chat-database.vercel.app",  # Production Vercel deployment
     ],
     allow_credentials=True,
     allow_methods=["*"],
